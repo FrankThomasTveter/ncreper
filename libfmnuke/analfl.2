@@ -1,0 +1,245 @@
+      subroutine ANALFL(MAXHDR,NRHDR,HDR250,
+     &     ACTHDR,LFLDAT,NRLEN,
+     &     MAXGRP,NRGRP,HDRGRP,
+     &     IRC)
+C
+      IMPLICIT NONE
+      SAVE
+C
+      INTEGER*4 NROPT
+      PARAMETER(NROPT=5)
+C
+      INTEGER*4 MAXHDR, NRHDR
+      CHARACTER*250 HDR250(MAXHDR),BHDR250(MAXHDR),BBHDR250
+      LOGICAL*4 ACTHDR(MAXHDR),LFLDAT(MAXHDR),BLFLDAT(MAXHDR),BBLFLDAT
+      INTEGER*4 NRLEN(MAXHDR),BNRLEN(MAXHDR),BBNRLEN
+      INTEGER*4 MAXGRP,NRGRP,
+     &     HDRGRP(2,MAXGRP,MAXHDR),BHDRGRP(2,MAXGRP,MAXHDR),
+     &     BBHDRGRP(2,MAXGRP)
+      INTEGER*4 IRC
+C
+      INTEGER*4 II, JJ, KK, LL, MM, CNT,ST,EN,ENHDR
+      INTEGER*4 INRHDR,IND(MAXHDR+1)
+      LOGICAL*4 LAND,BDONE,LSET,FOUND,OK,QLFL
+      EXTERNAL QLFL
+      CHARACTER*8 MYNAME
+      DATA MYNAME /'ANALFL'/
+C
+C     SORT HDR ARRAY ACCORDING GROUP
+C
+      IF (NRHDR.GT.MAXHDR) THEN
+         WRITE(*,*) MYNAME,'Nrhdr exceeds Maxhdr:',NRHDR,MAXHDR
+         IRC=991
+         RETURN
+      END IF
+C
+      OK=.TRUE.
+      CNT=0
+      DO II=1,NRHDR
+         IF (ACTHDR(II)) THEN
+            CNT=CNT+1
+            BHDR250(CNT)=HDR250(II)
+            BLFLDAT(CNT)=LFLDAT(II)
+            BNRLEN(CNT)=NRLEN(II)
+            DO JJ=1,MAXGRP
+               BHDRGRP(1,JJ,CNT)=HDRGRP(1,JJ,II)
+               BHDRGRP(2,JJ,CNT)=HDRGRP(2,JJ,II)
+            END DO
+         END IF
+      END DO
+C
+      DO II=2,CNT
+         JJ=II
+         BDONE = QLFL(MAXGRP,NRGRP,BHDRGRP(1,1,JJ-1),BHDRGRP(1,1,JJ))
+         DO WHILE (.NOT.BDONE)
+C     FLIP
+            BBHDR250=BHDR250(JJ)
+            BBLFLDAT=BLFLDAT(JJ)
+            BBNRLEN=BNRLEN(JJ)
+            DO KK=1,MAXGRP
+               BBHDRGRP(1,KK)=BHDRGRP(1,KK,JJ)
+               BBHDRGRP(2,KK)=BHDRGRP(2,KK,JJ)
+            END DO
+C
+            BHDR250(JJ)=BHDR250(JJ-1)
+            BLFLDAT(JJ)=BLFLDAT(JJ-1)
+            BNRLEN(JJ)=BNRLEN(JJ-1)
+            DO KK=1,MAXGRP
+               BHDRGRP(1,KK,JJ)=BHDRGRP(1,KK,JJ-1)
+               BHDRGRP(2,KK,JJ)=BHDRGRP(2,KK,JJ-1)
+            END DO
+C
+            BHDR250(JJ-1)=BBHDR250
+            BLFLDAT(JJ-1)=BBLFLDAT
+            BNRLEN(JJ-1)=BBNRLEN
+            DO KK=1,MAXGRP
+               BHDRGRP(1,KK,JJ-1)=BBHDRGRP(1,KK)
+               BHDRGRP(2,KK,JJ-1)=BBHDRGRP(2,KK)
+            END DO
+C
+            JJ=JJ-1
+            BDONE=(JJ.LE.1)
+            IF (.NOT. BDONE) 
+     &           BDONE = QLFL(MAXGRP,NRGRP,
+     &           BHDRGRP(1,1,JJ-1),BHDRGRP(1,1,JJ))
+C
+         END DO
+      END DO
+C
+C     START FROM BACK, ELIMINATE GROUPS
+C
+      INRHDR=CNT
+      DO II=1,INRHDR
+         IND(II)=II
+      END DO
+      IND(INRHDR+1)=INRHDR+1
+C
+      OK=.TRUE.
+      DO JJ=NRGRP,1,-1
+C     
+         ST=1
+         EN=ST
+         DO WHILE (ST.LE.CNT)
+C
+            IF (BHDRGRP(1,JJ,IND(ST)).NE.0) THEN
+C
+C     FIND END OF GROUP
+C
+               FOUND=QLFL(MAXGRP,JJ,
+     &              BHDRGRP(1,1,IND(MIN(EN+1,CNT))),
+     &              BHDRGRP(1,1,IND(ST)))
+               BDONE=(.NOT.FOUND)
+               DO WHILE (.NOT.BDONE)
+                  EN =MIN(EN+1,CNT)
+                  FOUND=QLFL(MAXGRP,JJ,
+     &                 BHDRGRP(1,1,IND(MIN(EN+1,CNT))),
+     &                 BHDRGRP(1,1,IND(ST)))
+                  IF (.NOT.FOUND) THEN
+                     BDONE=.TRUE.
+                  END IF
+                  IF (.NOT.BDONE) BDONE=(EN.GE.CNT)
+               END DO
+C     
+C     DETERMINE IF GROUP QUALIFIES ACCORDING TO SPECIFICATIONS
+C
+               LL=0
+               DO KK=ST,EN
+                  IF (BLFLDAT(IND(KK)))  LL=LL+1
+               END DO
+               IF (BHDRGRP(2,JJ,IND(ST)).EQ.1) THEN ! "&" group
+                  IF (JJ.EQ.1 .OR.
+     &                 (LL.NE.0 .AND. LL.NE.(EN-ST+1))) THEN 
+C     only all or 0 headers allowed
+                     DO KK=ST,EN
+                        IF (.NOT.BLFLDAT(IND(KK))) THEN ! too few headers
+                           IF (JJ.LT.NRGRP) THEN ! check if '?' is used
+                              IF (.NOT.BHDRGRP(2,JJ+1,IND(KK))
+     &                             .EQ.3) THEN
+                                 WRITE(*,*) MYNAME,
+     &                                'Missing the header:'//
+     &                                BHDR250(IND(KK))(1:BNRLEN(
+     &                                IND(KK)))
+                                 OK=.FALSE.
+                              END IF
+                           ELSE
+                              WRITE(*,*) MYNAME,
+     &                             'Missing the header:'//
+     &                             BHDR250(IND(KK))(1:BNRLEN(IND(KK)))
+                              OK=.FALSE.
+                           END IF
+                        END IF
+                     END DO
+                  END IF
+               ELSE IF (BHDRGRP(2,JJ,IND(ST)).EQ.2) THEN ! "%" group
+                  IF (LL.GT.1) THEN 
+C     only 1 or 0 headers allowed
+                     LL=0
+                     DO KK=ST,EN
+                        IF (BLFLDAT(IND(KK)))  LL=LL+1
+                        IF (LL.GT.1) THEN
+                           ENHDR=IND(KK+1)-1
+                           DO MM=IND(KK),ENHDR
+                              IF (BLFLDAT(MM)) THEN ! too many headers
+                                 WRITE(*,*) MYNAME,
+     &                                'Redundant header:'//
+     &                                BHDR250(MM)(1:BNRLEN(MM))
+                                 OK=.FALSE.
+                              END IF
+                           END DO
+                        END IF
+                     END DO
+                  END IF
+               ELSE IF (BHDRGRP(2,JJ,IND(ST)).EQ.3) THEN ! "$" group
+C     any number of headers allowed
+                  IF (JJ.EQ.1.AND.LL.EQ.0) THEN
+                     DO KK=ST,EN
+                        IF (.NOT.BLFLDAT(IND(KK))) THEN ! too few headers
+                           IF (JJ.LT.NRGRP) THEN ! check if '?' is used
+                              IF (.NOT.BHDRGRP(2,JJ+1,IND(KK))
+     &                             .EQ.3) THEN
+                                 WRITE(*,*) MYNAME,
+     &                                'Missing at least one header:'//
+     &                                BHDR250(IND(KK))(1:
+     &                                BNRLEN(IND(KK)))
+                                 OK=.FALSE.
+                              END IF
+                           ELSE
+                              WRITE(*,*) MYNAME,
+     &                             'Missing at least one header:'//
+     &                             BHDR250(IND(KK))(1:BNRLEN(IND(KK)))
+                              OK=.FALSE.
+                           END IF
+                        END IF
+                     END DO
+                  END IF
+               ELSE
+                  WRITE(*,*) MYNAME,'Unknown Group identifier.'
+                  IRC=993
+                  RETURN
+               END IF
+C     
+               IF (.NOT.OK) THEN
+                  IRC=391
+                  RETURN
+               END IF
+C     
+C     REMOVE SURPLUS HEADERS FROM ANALYSIS...
+C
+               LSET=(LL.NE.0)   ! SHOULD WE DEGENERATE TO 'SET'-FLAG?
+C     
+               FOUND =.FALSE.
+               KK=ST
+               DO WHILE (KK.LE.EN)
+                  IF (FOUND .OR.  .NOT.( ! and
+     &                 (LSET.AND.BLFLDAT(IND(KK))).OR.
+     &                 (.NOT.LSET.AND..NOT.BLFLDAT(IND(KK))))
+     &                 ) THEN
+                  ELSE
+                     IND(ST)=IND(KK)
+                     FOUND=.TRUE.
+                  END IF
+C     
+C     REMOVE FROM ANALYSIS
+C     
+                  IF (KK.NE.ST) THEN
+                     DO LL=KK,CNT
+                        IND(LL)=IND(LL+1)
+                     END DO
+                     CNT=CNT-1
+                     EN=EN-1
+                  ELSE
+                     KK=KK+1
+                  END IF
+C     
+               END DO
+            END IF
+C
+            ST=EN+1
+            EN=ST
+C     
+         END DO
+C     
+      END DO
+C
+      return
+      end

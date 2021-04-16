@@ -1,0 +1,87 @@
+
+
+         CGRP=0
+         MXLVL=0
+         LVL=1
+         CIND(LVL)=SUBGRP(1)
+         CURIND=1               ! CURRENT INDEX
+         CLEV=LVL
+         BDONE=(LVL.GT.MAXGROUPS)
+         DO WHILE (.NOT. BDONE)
+            IF (CIND(LVL).EQ.0) THEN
+               IF (LVL.GT.1) THEN
+                  CIND(LVL)=0
+                  LVL=LVL-1
+                  CIND(LVL)=INDX(1,CIND(LVL))
+               ELSE
+                  BDONE=.TRUE.
+               END IF
+            ELSE
+               POS=INDX(2,CIND(LVL))
+               IF (BHDRGRP(1,LVL).EQ. HDRGRP(1,POS).AND.
+     &              BHDRGRP(2,LVL).EQ. HDRGRP(2,POS)) THEN ! SAME GRP
+                  CURIND=CIND(LVL)
+                  CURLEV=LVL
+                  CGRP=INDX(2,CURIND)
+                  LVL=LVL+1
+                  CIND(LVL)=SUBGRP(POS)
+               ELSE
+                  CIND(LVL)=INDX(1,CIND(LVL))
+               END IF
+            END IF
+         END DO
+
+
+C
+C     ADD TO ARRAY
+C      
+      LVL=CLEV
+      BDONE=(LVL.GT.MAXGROUPS)
+      DO WHILE (.NOT. BDONE)
+         NRGROUPS=NRGROUPS+1
+         IF (NRGROUPS.GT.MAXGROUPS) THEN
+            WRITE(*,*) MYNAME,'Too many groups.'
+            IRC=956
+            RETURN
+         END IF
+C     
+         IF (BHDRGRP(2,LVL).NE.0) THEN
+            HDRGRP(1,NRGROUPS)=BHDRGRP(1,LVL)
+            HDRGRP(2,NRGROUPS)=BHDRGRP(2,LVL)
+         ELSE ! LAST GROUP REFERS TO HEADER
+            HDRGRP(1,NRGROUPS)=0
+            HDRGRP(2,NRGROUPS)=-POS
+            BDONE=.TRUE.
+         END IF
+         CGRP=NRGROUPS
+         LVLGRP(NRGROUPS)=LVL
+         MXLVL=MAX(LVL,MXLVL)
+C     
+         NRIND=NRIND+1
+         IF (NRIND.GT.MXIND) THEN
+            WRITE(*,*) MYNAME,'Too many group refs.'
+            IRC=956
+            RETURN
+         END IF
+C     
+         INDX(2,NRIND)=NRGROUPS
+         INDX(1,NRIND)=0
+C     
+         IF (SUBGRP(INDX(2,CURIND)).EQ.0) THEN
+            SUBGRP(INDX(2,CURIND))=NRIND
+         ELSE
+            CURIND=SUBGRP(INDX(2,CURIND))
+            DO WHILE (INDX(1,CURIND).NE.0)
+               CURIND=INDX(1,CURIND)
+            END DO
+            INDX(1,CURIND)=NRIND
+         END IF
+C     
+         CURIND=NRIND
+         LVL=LVL+1
+         IF (.NOT. BDONE) BDONE=(LVL.GT.MAXGROUPS)
+      END DO
+C
+      RETURN
+      END
+

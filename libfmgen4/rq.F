@@ -1,0 +1,51 @@
+      SUBROUTINE RQ(P,Q,R,T,L)
+C
+C     TO CONVERT RELATIVE HUMIDITY INTO SPECIFIC HUMIDITY
+C     TAKING ICE/LIQUID INTO ACCOUNT
+C
+C     P PRESSURE IN PASCAL
+C     Q SPEC-HUM IN KG/KG
+C     R REL-HUM
+C     T TEMP IN KELVIN
+C     L DIMENSION OF ARRAYS
+C
+C     J.E. HAUGEN, DNMI, JULY 1993
+C
+      IMPLICIT NONE
+      SAVE
+C
+      INTEGER  L
+      REAL   P(L),Q(L),R(L),T(L)
+C
+      REAL   RD,RV,VTMPC1,TMELT,C1ES,C2ES,C3ES,C4ES,
+     +     C3LES,C3IES,C4LES,C4IES,
+     +     SVP,PC1,PC3,PC4,PT,PT0
+      INTEGER  I
+C
+      SVP(PC1,PC3,PC4,PT,PT0)=PC1*EXP(PC3*(PT-PT0)/(PT-PC4))
+C
+      RD=287.05
+      RV=461.51
+      VTMPC1=RV/RD-1.
+      TMELT=273.16
+      C1ES=610.78
+      C2ES=C1ES*RD/RV
+      C3LES=17.269
+      C3IES=21.875
+      C4LES=35.86
+      C4IES= 7.66
+C
+      DO I = 1,L
+         IF(T(I).LT.TMELT)THEN
+            C3ES=C3IES
+            C4ES=C4IES
+         ELSE
+            C3ES=C3LES
+            C4ES=C4LES
+         ENDIF
+         Q(I)=R(I)/(P(I)/SVP(C2ES,C3ES,C4ES,T(I),TMELT)-VTMPC1)
+         IF( Q(I).LT.0.0 ) Q(I) = 0.0
+      ENDDO
+C
+      RETURN
+      END

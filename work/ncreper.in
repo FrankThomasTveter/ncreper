@@ -1,0 +1,50 @@
+#
+# ?
+# exit
+#
+ NCREPER V1.0 [0]
+#
+ INPUT FILE (NETCDF) [1]
+#  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_ens_snowfall/meps_lagged_6_h_subset_2_5km_alarm_snowfall_20210301T12Z.nc
+  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_mb0_snowfall/meps_det_2_5km_alarm_snowfall_20210301T12Z.nc
+#
+ AUXILIARY FILE (NETCDF) [1]
+#  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_ens_snowfall/meps_lagged_6_h_subset_2_5km_alarm_snowfall_20210301T12Z.nc.gp
+  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_mb0_snowfall/meps_det_2_5km_alarm_snowfall_20210301T12Z.nc.gp
+#
+ USE AUXILIARY VAR, REMOVE DIMENSIONS [*]
+   surface_geopotential time ensemble_member
+#
+ OUTPUT FILE (NETCDF) [1]
+   snowfall.nc
+#
+ NUMBER OF DATA SLICES [1]VFL
+    10
+#
+# ENSEMBLE DIMENSION
+#   ensemble_member
+#
+# MAKE ENSEMBLE AVERAGE
+#
+# NEW VAR, OLD ENSEMBLE VAR
+#  snowfall_amount_acc_exp  snowfall_amount_acc
+#
+ KEEP VARS [*]VFLR
+    surface
+    height0
+    height2
+    height7
+    percentile
+    time
+    forecast_reference_time
+    x
+    y
+    latitude
+    longitude
+    projection_lambert
+    projection_regular_ll
+#
+    snowfall_amount_acc
+    snowfall_amount_acc_exp
+    surface_geopotential
+#

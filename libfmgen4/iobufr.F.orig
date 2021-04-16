@@ -1,0 +1,850 @@
+      SUBROUTINE IOBUFR(FN250,KODE,
+     +     TIME,LAT,LON,
+     +     SHEIGHT,SATZEN,SATAZI,SATNAME,INSTRUMENT,
+     +     NRCHAN,MAXCH,BTEMPS,OBSFAIL,
+     +     BDONE,IRC)
+C     ***********************************************************************
+C     WRITTEN/MODIFIED BY:                                                  *
+C     --------------------------------------------------------------------- *
+C     |    NAME      |   DATE   |                 REASON                  | *
+C     --------------------------------------------------------------------- *
+C     | F. TVETER    | 20/08/02 | NEW                                     | *
+C     |              |          |                                         | *
+C     --------------------------------------------------------------------- *
+C     ***********************************************************************
+C     
+C     I FN250 = NAME FOR DATA FILE
+C     I  KODE = -1 OPEN DATA FILE TO READ, AND IDENTIFY SATNAME
+C     +       =-10 OPEN DATA FILE TO WRITE
+C     +       =  0 READ NEXT DATA ITEM
+C     +       = 10 WRITE NEXT DATA ITEM
+C     +       =  1 CLOSE DATA FILE (READ)
+C     +       =  100 CLOSE DATA FILE (WRITE)
+C     
+C     IO TIME(6)  TIME OF OBS/PROFILE
+C     +  TIME(1) = YEAR (YYYY)
+C     +  TIME(2) = MONTH
+C     +  TIME(3) = DAY
+C     +  TIME(4) = HOUR
+C     +  TIME(5) = MINUTE
+C     +  TIME(6) = SEC * 10**4
+C     O LAT = LATITUDE OF OBS
+C     O LON = LONGTITUDE OF OBS
+C     O SHEIGHT = SATELLITE HEIGHT
+C     O SATZEN  = SATELLITE ZENITH ANGLE
+C     O SATAZI  = SATELLITE AZIMUTH ANGLE
+C     O SATNAM  = SATELLITE NAME (e.g. "noaa15")
+C     O INSTRUMENT  = INSTRUMENT (e.g. "amsu-a"
+C     O NRCHAN  = NUMBER OF SATELLITE CHANNELS
+C     O MAXCH  = MAX VALUE FOR NRCHAN (PARAMETER)
+C     O BTEMPS(MAXCH) BRIGHTNESS TEMPERATURE FOR EACH CHANNEL (K)
+C     O OBSFAIL=FLAG SET WHEN OBSERVATION HAS ERRORS
+C     O BDONE=FLAG SET WHEN LAST RECORD IS READ
+C     O IRC=ERROR RETURN CODE, 0 = NO ERROR DETECTED
+C     
+      IMPLICIT NONE
+      SAVE
+C     
+      CHARACTER*250 FN250
+      INTEGER   KODE
+      CHARACTER*250 BTB250,BTD250
+      INTEGER     TIME(6)
+      REAL    LAT
+      REAL    LON
+      REAL    SHEIGHT
+      REAL    SATZEN,SATAZI
+      CHARACTER*8 SATNAME
+      CHARACTER*12 INSTRUMENT
+      INTEGER     NRCHAN,MAXCH
+      REAL    BTEMPS(MAXCH)
+      INTEGER   OBSFAIL,IRC
+C     
+      LOGICAL     OPENED,BDONE,first
+      CHARACTER*100 FMT100,HDR100
+      INTEGER     RECORD,IKODE,IIKODE,CREC,
+     &     II,KK,JJ
+C     
+      INTEGER     LENA,LENS,LENGTH,NROBS,NROBSR,NRPACK
+      EXTERNAL LENGTH
+C     
+      LOGICAL     OPENEDR, OPENEDW,BOK
+      EXTERNAL FTUNIT
+      CHARACTER*24 fdate
+      EXTERNAL fdate
+      REAL    VERSION
+      CHARACTER*24 IDB24,ID24
+      INTEGER     UNITR, UNITW, FTUNIT,LENI,LENF,
+     &     INRCHAN,INRLEV,INRPRED,IRC2,
+     &     IVERSION
+      INTEGER     maxobs
+      parameter(maxobs=10)
+C      parameter(maxobs=1)
+C     
+      CHARACTER*8 MYNAME
+      DATA MYNAME /'IOBUFR'/
+      DATA OPENED /.FALSE./
+C     
+      DATA OPENEDR, OPENEDW /.FALSE.,.FALSE./
+C     !------------------------------------------------------------------------
+C     ! Parameter statements
+C     !------------------------------------------------------------------------
+
+      INTEGER       Imiss       !- INTEGER     missing data indctr.
+      INTEGER       MxDes       !- max no. of descriptors
+      INTEGER       MxObs       !- max no. of observations
+      INTEGER       Ndes        !- no. of descriptors
+      INTEGER       Nelem       !- no. of descriptors per ob
+      INTEGER       Nscan       !- no. of positions per scan line
+      INTEGER       Nchan       !- no. of channels
+      INTEGER       NumBitsIn   !- size of raw data bit fields
+      INTEGER       NumBitsOut  !- size of BUFR data bit fields
+
+      REAL            Rmiss       !- REAL    missing data indctr.
+      REAL            TimeDelay   !- time between each FOV.      !1.5
+      
+      PARAMETER     (Imiss = -999999) !- set missing data indctr.
+      PARAMETER     (Nchan = 15) !- AMSU-A = 15 channels
+      PARAMETER     (Nscan = 90) !- AMSU-A = 30,AVHRR=90?, max nr of scan pos
+      PARAMETER     (MxDes = 300) !- set max no. of BUFR descs
+      DATA Ndes/1/              !- set no. of descriptors
+      PARAMETER     (MxObs  = 7000) !
+c      PARAMETER     (MxObs  = 5000) !- set no. of obs
+C     PARAMETER     (Nelem = 127)         !- set no. of descs per ob
+      PARAMETER     (Nelem = 156) !- set no. of descs per ob
+      PARAMETER     (NumBitsIn  = 32) !- set raw data bit field width
+      PARAMETER     (NumBitsOut = 24) !- ser BUFR bit field width
+      PARAMETER     (Rmiss = 1.7E38) !- set missing data indctr.
+C     PARAMETER     (Rmiss = -9999999.0)  !- set missing data indctr.
+      PARAMETER     (TimeDelay = 203.0) !- set time delay (millisecs)  !1.5
+
+!
+!     Machine precision dependent of the code
+!
+      integer jbitpw,jbytepw
+#ifdef PREC32 
+      parameter(jbitpw=32)
+      parameter(jbytepw=4)
+#else
+      parameter(jbitpw=64)
+      parameter(jbytepw=8)
+#endif
+
+C     !------------------------------------------------------------------------
+C     ! Declare variables
+C     !------------------------------------------------------------------------
+
+C     
+c     BUFR parameters
+c     Maximum length of each BUFR section
+      INTEGER     jsec0, jsec1, jsec2, jsec3, jsec4, jbufl
+      parameter(jsec0=3, jsec1=40, jsec2=64, jsec3=4, jsec4=2, 
+     &     jbufl=200000)
+c     Maximum length of delayed replication factors
+C      INTEGER     kdlen
+      INTEGER   kdlen      
+      parameter (kdlen=200)
+C     
+c     BUFR variables and workspace
+C     
+C      INTEGER     ktdlen, kbufl, ksize
+      INTEGER  ktdlen,kbufl,ksize
+
+c      INTEGER     kbufr(jbufl)
+      INTEGER  kbufr(jbufl)
+C      INTEGER     ksup(9)
+      INTEGER ksup(9)
+      INTEGER ksec0(jsec0), ksec1(jsec1),
+     $     ksec2(jsec2), ksec3(jsec3), ksec4(jsec4)
+C      INTEGER     kdata(kdlen)
+      INTEGER   kdata(kdlen)      
+C      INTEGER     ktdlst(500)  ! can hold up to 500 data descriptors
+      INTEGER   ktdlst(500)  ! can hold up to 500 data descriptors
+C      REAL      Values(Nelem,MxObs)   !- BUFR values array
+      REAL     Values(Nelem,max(Nscan,MxObs))   !- BUFR values array
+C      REAL            Values(Nelem,max(Nscan,MxObs)) !- BUFR values array
+      character*80 cvals(Nelem*MAXOBS)
+      character*64 cnames(Nelem*MAXOBS)
+      character*24 cunits(Nelem*MAXOBS)
+C     
+      INTEGER     nru
+      INTEGER     usat(8)
+C     
+C      INTEGER     return_code,nlen
+      INTEGER  return_code,nlen      
+      INTEGER       Systim(8)   !- Array to hold system time
+C     
+      IF (KODE.EQ.-10) THEN     ! open to write
+C     ...check if a file is allready opened...
+         IF (OPENEDW) THEN
+            WRITE(*,*) MYNAME,'FILE IS ALLREADY OPENED'
+            IRC=95
+            RETURN
+         END IF
+C     !------------------------------------------------------------------------
+C     ! Get the current date & time to put into section 1 of the BUFR message.
+C     !------------------------------------------------------------------------
+         
+         CALL DATIM(Systim)
+C     
+C     initialise data arrays
+C     
+         do ii=1,MxObs
+            do JJ=1,Nelem
+               values(JJ,II)=rmiss
+            end do
+         end do
+C     
+         nrobs=0
+C     
+         OPENEDW=.TRUE.
+C     
+      ELSE IF (KODE.EQ.-1) THEN ! open to read
+C     
+C     ...check if a file is allready opened...
+C     
+         IF (OPENEDR) THEN
+            WRITE(*,*) MYNAME,'FILE IS ALLREADY OPENED'
+            IRC=95
+            RETURN
+         END IF
+C     
+         UNITR=FTUNIT(IRC)
+         IF (IRC.NE.0) RETURN
+C     
+         LENF=LENGTH(FN250,250,10)
+         WRITE(*,*) MYNAME,'Reading file:'//FN250(1:LENF)
+C     !------------------------------------------------------------------------
+C     ! open unit 20 (output BUFR dataset)
+C     !------------------------------------------------------------------------
+
+         return_code=0
+         call pbopen(unitR,FN250(1:LENF),
+     &        'r',return_code)
+         IF (return_code.ne.0) THEN
+            WRITE(*,*) MYNAME,'Unable to open:'//FN250(1:LENF)
+            IRC=return_code
+            RETURN
+         END IF
+C     
+C     initialise data arrays
+C     
+         do ii=1,max(Nscan,MxObs)
+            do JJ=1,Nelem
+               values(JJ,II)=rmiss
+            end do
+         end do
+C     
+         nrobsR=0
+         nrpack=0
+         nru=0
+         first=.true.
+C     
+         OPENEDR=.TRUE.
+      ELSE IF (KODE.EQ.0) THEN  ! read
+         IF (.NOT.OPENEDR) THEN
+            WRITE(*,*) MYNAME,'OPEN FILE BEFORE READING IT'
+            IRC=97
+            RETURN
+         END IF
+C     
+         IF (NROBSR.GE.NRPACK) THEN
+C     
+C     READ NEXT BUFR-RECORD
+C     
+            KBUFL=JBUFL
+            KSIZE=KBUFL*4
+            CALL PBBUFR(UNITR,KBUFR,KSIZE,KBUFL,RETURN_CODE)
+            IF(RETURN_CODE.EQ.-1) THEN ! end of file
+               BDONE=.TRUE.
+               RETURN
+            ELSE IF(RETURN_CODE.LT.0) THEN
+               WRITE(*,*) MYNAME,'Error return from PBBUFR.',
+     &              RETURN_CODE
+               BDONE=.TRUE.
+C     IRC=RETURN_CODE
+               RETURN
+            ENDIF
+C     
+C     DECODE BUFR-RECORD
+C     
+#ifdef LITTLE_ENDIAN
+#ifdef PREC32
+                  call swab(KBUFR,JBUFL/4+1)
+#else 
+                  call swab(KBUFR,JBUFL/8+1)
+#endif
+#endif
+            NLEN=NELEM*Nscan
+            CALL BUFREX( KBUFL,KBUFR,KSUP,
+     &           KSEC0,KSEC1,KSEC2,KSEC3,KSEC4,
+     1           NELEM,CNAMES,CUNITS,NLEN,
+     3           VALUES,CVALS,RETURN_CODE)
+            
+            IF(RETURN_CODE.GT.0) THEN
+               WRITE(*,*) MYNAME,'Error return from BUFREX.',
+     &              RETURN_CODE
+               IRC=RETURN_CODE
+               RETURN
+            ENDIF
+            NROBSR=0
+C     
+C     write out the sequence
+C     
+            if (first) then
+               first=.false.
+               do ii=1,nelem
+                  write(*,*) myname,ii,
+     &                          cnames(ii)(1:30),cunits(ii)(1:10)
+               end do
+            end if
+C     
+            IF ( KSEC1(15).EQ.7 .OR. ! master table
+     &           KSEC1(6).EQ.3 .OR. ! bufr-message type (sounding data)
+     &           KSEC1(7).EQ.55 ) THEN ! subtype (atovs?)
+               NRPACK=KSEC3(3)  ! NUMBER OF PACKED OBSERVATIONS
+            ELSE
+               NRPACK=0
+            END IF
+         END IF
+         
+         NROBSR=NROBSR+1
+C     
+         BOK=.TRUE.
+         IF (BOK .AND. (
+     &        VALUES(1,NROBSR).NE.3 .OR. !- 008070
+     &        VALUES(2,NROBSR).NE.74 .OR. !- 001033
+     &        VALUES(3,NROBSR).NE.0 !- 001034 
+     &        )) THEN
+            WRITE(*,*) MYNAME,'Unknown bufr origin.',
+     &           VALUES(1,NROBSR),VALUES(2,NROBSR),VALUES(3,NROBSR)
+            BOK=.FALSE.
+         END IF
+C     
+         IF (BOK .AND. (
+     &        VALUES(4,NROBSR).NE.2 .OR. !- 008070
+     &        VALUES(5,NROBSR).NE.74 .OR. !- 001033
+     &        VALUES(6,NROBSR).NE.0 !- 001034
+     &        )) THEN
+            IF (NRU.LT.10) 
+     &           WRITE(*,*) MYNAME,'Unknown 1b format.'
+            BOK=.FALSE.
+         END IF
+C     
+         IF (BOK .AND. (
+     &        VALUES(7,NROBSR).EQ.206)) THEN
+            SATNAME='noaa15'
+         ELSEIF (BOK .AND. (
+     &        VALUES(7,NROBSR).EQ.207)) THEN
+            SATNAME='noaa16'
+         ELSEIF (BOK .AND. (
+     &        VALUES(7,NROBSR).EQ.208)) THEN
+            SATNAME='noaa17'
+         ELSEIF (BOK .AND. (
+     &        VALUES(7,NROBSR).EQ.209)) THEN
+            SATNAME='noaa18'
+         ELSE
+            SATNAME='unknown'
+         END IF
+C     
+         IF (BOK .AND. (
+     &        VALUES(8,NROBSR).EQ.3)) THEN
+            INSTRUMENT='amsu-a'
+         ELSEIF (BOK .AND. (
+     &        VALUES(8,NROBSR).EQ.0)) THEN
+            INSTRUMENT='hirs'
+         ELSE IF (BOK) THEN
+            IF (NRU.LT.10) 
+     &           WRITE(*,*) MYNAME,'Unknown instrument:',
+     &           VALUES(8,NROBSR)
+            BOK=.FALSE.
+         END IF
+         call chop(satname,8)
+         call chop(instrument,12)
+C     
+c         IF (BOK) BOK=(NINT(VALUES(29,NROBSR)).EQ.0) !vt: 29 gives cloudcover
+C     
+         IF (BOK) THEN
+            TIME(1)=NINT(VALUES(16,NROBSR))
+            TIME(2)=NINT(VALUES(17,NROBSR))
+            TIME(3)=NINT(VALUES(18,NROBSR))
+            TIME(4)=NINT(VALUES(19,NROBSR))
+            TIME(5)=NINT(VALUES(20,NROBSR))
+            TIME(6)=NINT(VALUES(21,NROBSR)*1.0D4)
+C     
+            LAT=VALUES(22,NROBSR)
+            LON=VALUES(23,NROBSR)
+C     
+            SHEIGHT=VALUES(24,NROBSR) * 1.0D-3
+            SATZEN=VALUES(25,NROBSR)
+            SATAZI=VALUES(26,NROBSR)
+C     
+            if (nrobsr.gt.15 .and. nrpack.eq.30) satzen=-satzen
+C     
+            OBSFAIL=VALUES(29,NROBSR)
+C     
+            NRCHAN=0
+	    IF (INSTRUMENT(1:6).eq.'amsu-a') THEN
+               DO JJ=1,MIN(15,MAXCH)	       
+                  IF (NINT(VALUES(38+(JJ-1)*6,NROBSR))
+     &              .EQ.(JJ+27)) THEN
+                     BTEMPS(JJ)=VALUES(43+(JJ-1)*6,NROBSR)
+                     NRCHAN=JJ
+                  ELSE
+                     BTEMPS(JJ)=0.0D0
+		     WRITE(*,*) MYNAME,'bummer...amsua channel',jj
+                  END IF
+	       ENDDO
+	    ELSEIF (INSTRUMENT(1:4).eq.'hirs') THEN
+	       DO JJ=1,MIN(19,MAXCH)
+                  IF (NINT(VALUES(38+(JJ-1)*6,NROBSR))
+     &              .EQ.(JJ)) THEN
+                     BTEMPS(JJ)=VALUES(43+(JJ-1)*6,NROBSR)
+                     NRCHAN=JJ
+                  ELSE
+                     BTEMPS(JJ)=0.0D0
+		     WRITE(*,*) MYNAME,'bummer...hirs channel',jj
+                  END IF
+	       END DO
+	    ENDIF
+            
+C     
+         ELSE
+            NRU=NRU+1
+            USAT(1)=VALUES(1,NROBSR)
+            USAT(2)=VALUES(2,NROBSR)
+            USAT(3)=VALUES(3,NROBSR)
+            USAT(4)=VALUES(4,NROBSR)
+            USAT(5)=VALUES(5,NROBSR)
+            USAT(6)=VALUES(6,NROBSR)
+            USAT(7)=VALUES(7,NROBSR)
+            USAT(8)=VALUES(8,NROBSR)
+         END IF
+C
+C vt:         IF (.NOT.BOK) OBSFAIL=1
+C
+C     WRITE(*,*) MYNAME,'Option not implemented.'
+C     BDONE=.TRUE.
+      ELSE IF (KODE.EQ.1) THEN  ! close read file
+C     
+         IF (.NOT.OPENEDR) THEN
+            WRITE(*,*) MYNAME,'Open routine before closing.'
+            IRC=943
+            RETURN
+         END IF
+C     
+         OPENEDR=.FALSE.
+         CALL PBCLOSE(UNITR,RETURN_CODE)
+         IF (RETURN_CODE.NE.0) THEN
+            WRITE(*,*) MYNAME,'Unable to close:'//FN250(1:LENF)
+            IRC=return_code
+            RETURN
+         END IF
+C     
+         IF (NRU.NE.0) THEN
+            WRITE(*,*) MYNAME,'Obs ignored :',NRU
+            WRITE(*,*) MYNAME,'Last BUFR origin:',(USAT(JJ),JJ=1,3)
+            WRITE(*,*) MYNAME,'Last 1b-format  :',(USAT(JJ),JJ=4,6)
+            WRITE(*,*) MYNAME,'Last sat/instr  :',(USAT(JJ),JJ=7,8)
+         END IF
+      ELSE IF (KODE.EQ.10) THEN ! write
+         IF (.NOT.OPENEDW) THEN
+            WRITE(*,*) MYNAME,'OPEN FILE BEFORE WRITING TO IT'
+            IRC=97
+            RETURN
+         END IF
+C     
+         nrobs=nrobs+1
+C     
+         if (nrobs.gt.MxObs) then
+            write(*,*) myname,'Too many obs.',NROBS
+            IRC=374
+            RETURN
+         END IF
+C     
+         
+C     !-----------------------------------------------------------------------
+C     ! 1c dataset creation site (UK Met Office = EGRR = 74)
+C     !-----------------------------------------------------------------------
+
+         VALUES(1,NROBS)  = 3   !- 008070
+         VALUES(2,NROBS)  = 74  !- 001033
+         VALUES(3,NROBS)  = 0   !- 001034       
+
+C     !-----------------------------------------------------------------------
+C     ! 1b dataset creation site (UK Met Office = EGRR = 74)
+C     !-----------------------------------------------------------------------
+
+         VALUES(4,NROBS)  = 2   !- 008070
+         VALUES(5,NROBS)  = 74  !- 001033
+         VALUES(6,NROBS)  = 0   !- 001034       
+
+C     !-----------------------------------------------------------------------
+C     ! satellite identifier (NOAA14 = 205, NOAA-15 = 206 e.t.c.)
+C     !-----------------------------------------------------------------------
+
+          call chop(satname,8)
+          lens=length(satname,8,5)
+C
+          IF (SATNAME(1:lens).EQ.'noaa15') then
+             VALUES(7,NROBS)  = 206 !- 001007       
+          ELSEIF (SATNAME(1:lens).EQ.'noaa16') then
+             VALUES(7,NROBS)  = 207 !- 001007       
+          ELSEIF (SATNAME(1:lens).EQ.'noaa17') then
+             VALUES(7,NROBS)  = 208 !- 001007       
+          ELSEIF (SATNAME(1:lens).EQ.'noaa18') then
+             VALUES(7,NROBS)  = 209 !- 001007       
+          ELSE
+             stop 'system error'
+             VALUES(7,NROBS)  = Rmiss
+          ENDIF       
+          
+!-----------------------------------------------------------------------
+! satellite sensor indicator. AMSU-A = 3, HIRS = 0
+!-----------------------------------------------------------------------
+
+          call chop(instrument,12)
+          leni=length(instrument,12,5)
+C
+          if (instrument(1:leni).eq.'amsu-a') then
+             VALUES(8,NROBS) = 3 !- 002048
+	  elseif (instrument(1:4).eq.'hirs') then
+             VALUES(8,NROBS) = 0 !- 002048
+          else
+             VALUES(8,NROBS) = Rmiss
+          end if
+ 
+!-----------------------------------------------------------------------
+! orbit number
+!-----------------------------------------------------------------------
+ 
+          VALUES(9,NROBS) = Rmiss   ! ama1c_h_startorbit    - 005040
+           
+!-----------------------------------------------------------------------
+! Satellite antenna corrections version number
+!-----------------------------------------------------------------------
+               
+          VALUES(10,NROBS) = Rmiss  ! ama1c_h_vnantennacorr - 025075      
+
+C     !-----------------------------------------------------------------------
+C     ! scan line number, Field Of View number, Major frame count
+C     !-----------------------------------------------------------------------
+
+         VALUES(11,NROBS) = Rmiss ! ama1c_scnlin - 005041
+
+         VALUES(12,NROBS) = Rmiss !- 005043        
+         
+         VALUES(13,NROBS) = Rmiss !- 025070
+         
+C     !-----------------------------------------------------------------------
+C     ! Scan line status and scan line quality flags.
+C     !-----------------------------------------------------------------------
+
+         VALUES(14,NROBS) = Rmiss ! ma1c_qualind
+
+         VALUES(15,NROBS) = Rmiss ! ama1c_scanqual
+
+C     CALL BITSWAP(ama1c_scanqual, Mask033031, NumBitsIn, 
+C     &                   Bit, NumBitsOut)
+C     VALUES(15,NROBS) = 1.0*Bit
+
+!-----------------------------------------------------------------------
+! Time of observation
+!-----------------------------------------------------------------------
+
+          VALUES(16,NROBS) = TIME(1) !1.6
+          VALUES(17,NROBS) = TIME(2) !- 004002        
+          VALUES(18,NROBS) = TIME(3) !- 004003        
+          VALUES(19,NROBS) = TIME(4) !- 004004        
+          VALUES(20,NROBS) = TIME(5) !- 004005        
+          VALUES(21,NROBS) = TIME(6)*1.0D-4 !- 004006        
+
+!-----------------------------------------------------------------------
+! latitude  (converted from degrees N * 10^4 to degrees N)
+! longitude (converted from degrees E * 10^4 to degrees E)
+!-----------------------------------------------------------------------
+
+          VALUES(22,NROBS) = LAT    !- 005001             
+          VALUES(23,NROBS) = LON    !- 006001      
+ 
+!-----------------------------------------------------------------------
+! height of station (converted from km to m)
+!-----------------------------------------------------------------------
+
+          VALUES(24,NROBS) = SHEIGHT * 1000 !- 007001    
+
+!-----------------------------------------------------------------------
+! satellite zenith angle (converted from degrees * 10^2 to degrees)
+! bearing or azimuth     (converted from degrees * 10^2 to degrees)
+! solar zenith angle     (converted from degrees * 10^2 to degrees)
+! solar azimuth          (converted from degrees * 10^2 to degrees)
+!-----------------------------------------------------------------------
+
+          VALUES(25,NROBS) = SATZEN !- 007024
+	  IF (SATAZI .lt.0) THEN
+	      SATAZI=SATAZI + 360.0 ! get rid of negative values
+C	      write(*,*) MYNAME,'satazi',nrobs,' negative, adding 360'
+	  ENDIF
+          VALUES(26,NROBS) = SATAZI !- 005021    
+          VALUES(27,NROBS) = Rmiss  ! ama1c_angles(3,i)
+          VALUES(28,NROBS) = Rmiss  ! ama1c_angles(4,i) - 005022   
+
+!-----------------------------------------------------------------------
+! FOV quality flags for ATOVS
+!-----------------------------------------------------------------------
+
+C     VALUES(29) = Rmiss  ! ama1c_dataqual(i)
+         VALUES(29,NROBS) = OBSFAIL ! ama1c_dataqual(i) !vt: cloud cover
+							! (0-9)  10-2002
+!-----------------------------------------------------------------------
+! Radiometer identifier (HIRS), Instrument temperature
+! Radiometer identifier (AMSU-A1-1), Instrument temperature
+! Radiometer identifier (AMSU-A2), Instrument temperature
+! Radiometer identifier (AMSU-B), Instrument temperature
+!-----------------------------------------------------------------------
+ 
+c          VALUES(30,NROBS) = Rmiss !- 002151
+          VALUES(30,NROBS) = 0 	!- 002151
+          VALUES(31,NROBS) = Rmiss
+          
+c          VALUES(32,NROBS) = Rmiss !- 002151
+          VALUES(32,NROBS) = 3 !- 002151
+          VALUES(33,NROBS) = Rmiss ! ama1c_instrtemp1 - 012064
+          
+c          VALUES(34,NROBS) = Rmiss !- 002151
+          VALUES(34,NROBS) = 4 !- 002151
+          VALUES(35,NROBS) = Rmiss ! ama1c_instrtemp2 - 012064
+ 
+c          VALUES(36,NROBS) = Rmiss !- 002151
+          VALUES(36,NROBS) = 6 !- 002151
+          VALUES(37,NROBS) = Rmiss
+
+!-----------------------------------------------------------------------
+! Loop over AMSU-A or HIRS channels
+!-----------------------------------------------------------------------
+          if (instrument(1:4).eq.'hirs') then  !vt: check which instrument
+	     NRCHAN=19
+	  endif
+          DO jj = 1,NRCHAN
+          call chop(instrument,12)
+          leni=length(instrument,12,5)
+C
+          if (instrument(1:leni).eq.'amsu-a') then
+!-----------------------------------------------------------------------
+! TOVS/ATOVS/AVHRR instrumentation channel number (28 -> 42)
+!-----------------------------------------------------------------------
+
+
+            VALUES(38+(jj-1)*6,NROBS) = jj + 27 !- 002150
+C
+	  elseif (instrument(1:4).eq.'hirs') then
+!-----------------------------------------------------------------------
+! TOVS/ATOVS/AVHRR instrumentation channel number (1 -> 19)
+!-----------------------------------------------------------------------
+
+            VALUES(38+(jj-1)*6,NROBS) = jj            !- 002150
+          end if
+
+C     !-----------------------------------------------------------------------
+C     ! 025076 : log_10 of (Temperature-radiance central wavenumber) for ATOVS
+C     !
+C     ! range of pre-log values = 0.8 -> 15,000 cm-1 = 80 -> 1,500,000 m-1
+C     ! with a required precision of 6 significant figures.
+C     !-----------------------------------------------------------------------
+            
+            VALUES(39+(jj-1)*6,NROBS) = Rmiss ! ama1c_h_tempradcnv(1,jj)
+
+C     !-----------------------------------------------------------------------
+C     ! 025077 : Bandwidth correction coefficient 1 for ATOVS
+C     ! 025078 : Bandwidth correction coefficient 2 for ATOVS
+C     !-----------------------------------------------------------------------
+            
+            VALUES(40+(jj-1)*6,NROBS) = Rmiss ! ama1c_h_tempradcnv(2,jj)
+
+            VALUES(41+(jj-1)*6,NROBS) = Rmiss ! ama1c_h_tempradcnv(3,jj)
+            
+C     !-----------------------------------------------------------------------
+C     ! Channel quality flags for ATOVS
+C     !-----------------------------------------------------------------------
+
+            VALUES(42+(jj-1)*6,NROBS) = Rmiss ! ama1c_chanqual(jj)
+            VALUES(42+(jj-1)*6,NROBS) = Rmiss ! ama1c_chanqual(jj)
+
+C     !-----------------------------------------------------------------------
+C     ! Brightness temperature (Converted from deg K * 100 to deg K)
+C     !-----------------------------------------------------------------------
+
+            VALUES(43+(jj-1)*6,NROBS) = BTEMPS(JJ) !- 012063
+         ENDDO                  !- jj
+      ELSE IF (KODE.EQ.100) THEN ! close write
+C     
+         IF (.NOT.OPENEDW) THEN
+            WRITE(*,*) MYNAME,'Open routine before closing.'
+            IRC=943
+            RETURN
+         END IF
+C     
+         OPENEDW=.FALSE.
+C     
+         IF (NROBS.EQ.0) THEN
+            WRITE(*,*) MYNAME,'No obs read, no bufr written.'
+         ELSE
+            
+C     
+            UNITW=FTUNIT(IRC)
+            IF (IRC.NE.0) RETURN
+C     
+            LENF=LENGTH(FN250,250,10)
+            WRITE(*,*) MYNAME,'Writing to file:'//FN250(1:LENF)
+C     !------------------------------------------------------------------------
+C     ! open unit 20 (output BUFR dataset)
+C     !------------------------------------------------------------------------
+            
+            return_code=0
+            call pbopen(unitW,FN250(1:LENF),
+     &           'w',return_code)
+            IF (return_code.ne.0) THEN
+               WRITE(*,*) MYNAME,'Unable to open:'//FN250(1:LENF)
+               IRC=return_code
+               RETURN
+            END IF
+            
+c**   2. Set BUFR message data descriptor list
+c     -------------------------------------
+            
+C     ktdlst(1) = 310009
+            ktdlst(1) = 310008
+            ktdlen = 1
+            
+c     *    3.5 Create BUFR sections 0-3
+c     ------------------------
+            
+C     nrobs=min(nrobs,1)
+            do ii=1,nrobs,maxobs
+C     
+C     write(*,*) myname,'Writing from obs:',ii,
+C     &               '(',min(maxobs,nrobs-ii+1),')'
+c     set section 0
+               
+               ksec0(1)=0       ! length of sec 0
+               ksec0(2)=0       ! Total length of Bufr message (bytes)
+               ksec0(3)=3       ! BUFR edition number
+               
+c     set section 1
+               
+               ksec1( 1)=18
+               ksec1( 2)=3
+               ksec1( 3)=98     ! Originating centre (160 = NOAA/NESDIS)
+C     ksec1( 3)=74       ! Originating centre (160 = NOAA/NESDIS)
+               ksec1( 4)=0      ! Originating sub-centre (none)
+               ksec1( 5)=0      ! Update sequence number (none)
+               ksec1( 6)=3      ! Bufr message type 
+C     +            ...( 3 = Sounding data (satellite), 
+C     +                12 = Surface data (satellite))
+               ksec1( 7)=55     ! Bufr message subtype 
+C     +            ...( 60 = global atovs, 
+C     +                 61 = local atovs, 
+C     +                137 = local ECMWF value for QuikSCAT data)
+               ksec1( 8)=1      ! Version number of local table
+C     ksec1( 8)=1        ! Version number of local table
+C     
+               ksec1( 9)=VALUES(16,NROBS)-1900.0 ! year 
+               ksec1(10)=VALUES(17,NROBS) ! month
+               ksec1(11)=VALUES(18,NROBS) ! day
+               ksec1(12)=VALUES(19,NROBS) ! hour
+               ksec1(13)=VALUES(20,NROBS) ! minute
+C     
+C     ksec1( 9)=systim(1)
+C     ksec1(10)=systim(2)
+C     ksec1(11)=systim(3)
+C     ksec1(12)=systim(4)
+C     ksec1(13)=systim(5)
+
+               ksec1(14)=0
+               ksec1(15)=7      ! Version number of master table
+C     ksec1(15)=6        ! Version number of master table
+               ksec1(16)=0
+               ksec1(17)=0
+               ksec1(18)=0
+               
+C     length of section 2
+               ksec2(1)=0
+c     set section 3
+               
+               ksec3(3)=min(maxobs,nrobs-ii+1) ! number of subsets in this message
+               ksec3(4)=192     ! data compression (192 = on, 128 = off)
+C     
+               ksec4(1)=0
+C     
+C     *    3.7 Encode bufr message
+C     -------------------
+               
+               return_code=0
+               
+               nlen=Nelem*min(maxobs,nrobs-ii+1)
+               KBUFL=JBUFL
+               call bufren( ksec0,ksec1,ksec2,ksec3,ksec4,
+     1              ktdlen,ktdlst,kdlen,kdata,Nelem,nlen,
+     3              values(1,ii),cvals,kbufl,kbufr,return_code)
+               
+               if(return_code.gt.0) then
+                  write(*,*) Myname,'Error return from BUFREN.',
+     &                 return_code
+                  irc=return_code
+                  return
+               endif
+               
+C     ! ----------------------------------------------------------------------
+C     ! Write the BUFR message to a dataset.
+C     ! ----------------------------------------------------------------------
+
+c     *    3.8 Write bufr message to output file
+c     ---------------------------------
+               
+               ksize=kbufl*jbytepw
+#ifdef LITTLE_ENDIAN
+#ifdef PREC32
+C                  call swab(KBUFR,JBUFL/4+1)
+                  call swab(KBUFR,JBUFL)
+#else 
+                  call swab(KBUFR,JBUFL)
+C                  call swab(KBUFR,JBUFL/8+1)
+#endif
+#endif
+C     write(*,*) myname,'Bufr length:',kbufl,
+C     &              ', bytes:',ksize
+               call pbwrite(unitw,kbufr,ksize,return_code)
+               if(return_code.lt.0) then
+                  write(*,*) myname,'Error return from PBWRITE.',
+     &                 return_code
+                  irc=return_code
+                  return
+               endif
+            end do
+C     
+C     CALL CCLOSE(Unitw)
+C     call pbflush(unitW)
+C     
+            call pbclose(unitW,return_code)
+            IF (return_code.ne.0) THEN
+               WRITE(*,*) MYNAME,'Unable to close:'//FN250(1:LENF)
+               IRC=return_code
+               RETURN
+            END IF
+         END IF
+      ELSE 
+         WRITE(*,*) MYNAME,'UNKNOWN KODE:',KODE
+         IRC=999
+         RETURN
+      END IF
+C     
+C     IDENTIFY THE NEXT OBS
+C     
+C     RETURN OBS
+C     
+      RETURN
+      END
+      
+
+
+
+

@@ -1,0 +1,6 @@
+#!/bin/sh
+date
+rm -f out.nc con.nc
+time ./ncreper.bin  < ncreper.in
+date
+#

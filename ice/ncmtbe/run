@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+#ln -sf ncmtbe.bin ncmtbe.bin_test
+#
+./ncmtbe.bin_test  < ncmtbe.in
+#

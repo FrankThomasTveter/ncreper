@@ -1,0 +1,200 @@
+ MNCMTBE       Debug: Routine starts.           0
+ MNCMTBE       ----------------------------------------
+ MNCMTBE       Debug: Read header:           1
+ MNCMTBE       Debug: Read header:          10
+ MNCMTBE       Debug: Read header:          40
+ MNCMTBE       Debug: Read header:          30
+ MNCMTBE       ----------------------------------------
+ MNCMTBE       Scanning: /elysium/data/rare/test/pp/ens/eps25_2016102912Z.nc
+ MNCMTBE       Opening: /elysium/data/rare/test/stat/eps25_2016102912Z.nc
+ MNCMTBE       Creating output from: /elysium/data/rare/test/pp/ens/eps25_2016102912Z.nc
+ MNCMTBE       Firstivar:spd_wind_10m
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Processing:/elysium/data/rare/test/pp/ens/eps25_2016102912Z.nc
+ MNCMTBE       I-var-loop start: "time"
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           1 T
+ ncf_printDimOrder      1                 time       1       41
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "forecast_reference_time"
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_printDimOrder    Dimensions:           0 T
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "surface"
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           1 T
+ ncf_printDimOrder      2              surface       1        1
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "projection_regular_ll"
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_printDimOrder    Dimensions:           0 T
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "longitude"
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           1 T
+ ncf_printDimOrder      3            longitude       1      373
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "latitude"
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           1 T
+ ncf_printDimOrder      4             latitude       1      137
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "precipitation_amount_acc"
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           5 T
+ ncf_printDimOrder      3            longitude       1      373
+ ncf_printDimOrder      4             latitude       1      137
+ ncf_printDimOrder      2              surface       1        1
+ ncf_printDimOrder      1                 time       1       41
+ ncf_printDimOrder      5           statistics       1       35
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE        Range:   200.00000000000000             1000 precipitation_amount_acc_thr
+ MNCMTBE       Time loop :            1          41
+ MNCMTBE       Time loop stop   0.0000000000000000     
+ precipitation_amount_acc, mean:      0.00, stdv:      0.00, cnt:0
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       I-var-loop start: "air_temperature_2m"
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       Checking for averaging.
+ MNCMTBE       Find output variable.
+ MNCMTBE       ...make dimension order.
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ MNCMTBE       ...remove time.
+ MNCMTBE       Find statistics variable
+ MNCMTBE       ...make dimension order. F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_makeDimOrder    Debug: F F F F
+ ncf_printDimOrder    Dimensions:           5 T
+ ncf_printDimOrder      3            longitude       1      373
+ ncf_printDimOrder      4             latitude       1      137
+ ncf_printDimOrder      2              surface       1        1
+ ncf_printDimOrder      1                 time       1       41
+ ncf_printDimOrder      5           statistics       1       35
+ MNCMTBE       ...remove time. T           1
+ MNCMTBE       Entering processing block.
+ MNCMTBE        Range:   200.00000000000000             1000 air_temperature_2m_thr
+ MNCMTBE       Time loop :            1          41
+ MNCMTBE       Time loop stop   0.0000000000000000     
+ air_temperature_2m, mean:      0.00, stdv:      0.00, cnt:0
+ MNCMTBE       I-var-loop end T
+ MNCMTBE       End of I-VAR.
+ MNCMTBE       Clearing:/elysium/data/rare/test/pp/ens/eps25_2016102912Z.nc
+ MNCMTBE       End of I-FILE.
+ MNCMTBE       Done processing.
+ MNCMTBE       Compressing variables.
+ MNCMTBE       Compressing dimensions.
+ MNCMTBE       Writing output.
+ ncf_createNcFi  Opening:'out.nc'
+ ncf_writeNcVars Variable: spd_wind_10m ( 2095141 )
+ ncf_writeNcVars Variable: time ( 41 )
+ ncf_writeNcVars Variable: forecast_reference_time ( 1 )
+ ncf_writeNcVars Variable: surface ( 1 )
+ ncf_writeNcVars Variable: projection_regular_ll ( 1 )
+ ncf_writeNcVars Variable: longitude ( 373 )
+ ncf_writeNcVars Variable: latitude ( 137 )
+ ncf_writeNcVars Variable: precipitation_amount_acc_mtbe ( 2095141 )
+ ncf_writeNcVars Variable: air_temperature_2m_mtbe ( 2095141 )
+ MNCMTBE       Writing statistics.
+
+ MNCMTBE      Available files:                    0
+ MNCMTBE       -----------------------------------------------
+ MNCMTBE          Accepted files:                 1
+ NCMTBE      -------NORMAL END OF PROGRAM-------

@@ -1,0 +1,78 @@
+lg <- function(x){return(x)}
+lg <- function(x){return(log10(pmax(x,1e-8)))}
+
+v = c("ff10m", "t2m", "rr12");
+
+raw2 <- read.table("fort.60")
+raw4 <- read.table("fort.80")
+
+pp2=unique(raw2[,1]);
+
+width=c(1,2);
+type=c(4,1);
+
+
+for (ii in pp2) {
+   postscript(paste("trans",ii,".ps",sep=""));
+
+   par(mfrow=c(1,2))
+
+   sel2 = (raw2[,1]==ii);
+   tm2 = unique(raw2[sel2,2]);
+   plot (raw2[sel2,4],lg(raw2[sel2,5]),type="n",main=paste("Double-momentum-transformation (",v[ii],")"),xlab="x",ylab="log10(P)");
+   rangex2=range(raw2[sel2,4]);
+   rangey2=range(lg(raw2[sel2,5]));
+   lines(rangex2,c(0.,0.),lty=2);
+   lines(c(0.,0.),rangey2,lty=2);
+   print (paste("Rangey2:",rangey2));
+   first=TRUE;
+   for (tt in tm2) {
+      set2 = (raw2[,1]==ii & raw2[,2]==tt);
+      lines (raw2[set2,4],lg(raw2[set2,5]),lty=type[1],lwd=width[1]);
+      if (first) {lines (raw2[set2,4],lg(raw2[set2,6]),lty=type[2],lwd=width[2]);}
+      first=FALSE;
+   }
+   legend(0.3*rangex2[1]+0.7*rangex2[2], 0.01*rangey2[1]+0.99*rangey2[2], c("Rwi","Normal"), cex=0.8, lwd=width, lty=type);
+
+   sel4 = (raw4[,1]==ii);
+   tm4 = unique(raw4[sel4,2]);
+   plot (raw4[sel4,4],lg(raw4[sel4,5]),type="n",main=paste("Quadruple-momentum-transformation (",v[ii],")"),xlab="u",ylab="log10(P)")
+   rangex4=range(raw4[sel4,4]);
+   rangey4=range(lg(raw4[sel4,5]));
+   lines(rangex4,c(0.,0.),lty=2);
+   lines(c(0.,0.),rangey4,lty=2);
+   first=TRUE;
+   for (tt in tm4) {
+      set4 = (raw4[,1]==ii & raw4[,2]==tt);
+      lines (raw4[set4,4],lg(raw4[set4,5]),lty=type[1],lwd=width[1]);
+      if (first){lines (raw4[set4,4],lg(raw4[set4,6]),lty=type[2],lwd=width[2]);}
+      first=FALSE;
+   }
+   legend(0.3*rangex4[1]+0.7*rangex4[2], 0.01*rangey4[1]+0.99*rangey4[2], c("Rwi","Normal"), cex=0.8, lwd=width,lty=type);
+
+   dev.off();
+
+}
+
+
+
+
+raw0 <- read.table("fort.10")
+
+pp=unique(raw0[,1]);
+
+for (ii in pp) {
+   sel = (raw0[,1]==ii);
+   tm = unique(raw0[sel,2]);
+   plot (raw0[sel,4],lg(raw0[sel,5]),type="n")
+   rangex=range(raw0[sel,4]);
+   rangey=range(lg(raw0[sel,5]));
+   lines(rangex,c(0.,0.))
+   lines(c(0.,0.),rangey)
+   for (tt in tm) {
+      set = (raw0[,1]==ii & raw0[,2]==tt);
+      lines (raw0[set,4],lg(raw0[set,5]),lty=tt)
+      lines (raw0[set,4],lg(raw0[set,6]),lty=tt)
+   }
+}
+

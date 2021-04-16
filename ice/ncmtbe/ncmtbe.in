@@ -1,0 +1,15 @@
+ NCMTBE V1.0 [0]VFLR
+#
+#
+INPUT ENSEMBLE FILE (NETCDF)
+ /elysium/data/rare/nwparc/pp/ens/eps25_2017032200Z.nc
+#
+STATISTICS FILE (NETCDF) [1]VFLR &
+
+/elysium/data/rare/nwparc/stat/eps25_2017032100Z.nc
+#
+OUTPUT FILE (NETCDF) [1]VFLR &
+ out.nc
+#
+ DUMP DATA
+# 

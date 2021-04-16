@@ -1,0 +1,649 @@
+      SUBROUTINE BTCALC5(KODE,
+     +     TIME,LAT,LON,
+     +     SHEIGHT,STYPE,SATZEN,SATAZI,SATNAME,
+     +     NRCHAN,CHINDEX,BTEMPSC,NRPRED,PRED,PCAT,
+     +     GPRES,GWIND,GWINDIR,GTEMP,GWATV,GOZONE,GWATL,
+     +     SOILM,FRACTL,ALBEDO,ICEC,
+     +     CLCOV,CLTOP,CLBOT,
+     +     NRLEV,INPRES,TEMP,WATV,OZONE,WATL,
+     +     NOE250,NOA250,IRC)
+C
+C     I  KODE = -1 PREPARE CALC
+C     +       =  0 CALCULATE
+C     +       =  1 TERMINATE CALC
+C
+C     I  TIME(6) = TIME OF OBS/PROFILE
+C     +  TIME(1) = YEAR (YYYY)
+C     +  TIME(2) = MONTH
+C     +  TIME(3) = DAY
+C     +  TIME(4) = HOUR
+C     +  TIME(5) = MINUTE
+C     +  TIME(6) = SEC * 10**4
+C     I  LAT = LATITUDE OF OBS/PROFILE
+C     I  LON = LONGTITUDE OF OBS/PROFILE
+C
+C     I  SHEIGHT = SATELLITE HEIGHT (KM, NOT USED)
+C     I  STYPE   = TYPE OF SURFACE (1=SEA)
+C     I  SATZEN  = SATELLITE ZENITH ANGLE (DEG)
+C     I  SATNAM  = SATELLITE NAME (e.g. "noaa15")
+C     I  NRCHAN  = NUMBER OF SATELLITE CHANNELS
+C     I  CHINDEX(NRCHAN), DEFAULT ARRAY MADE BY CHINDXX.
+C     +     ARRAY CONTAINS THE RTTOV CHANNEL INDEX.
+C     O  BTEMPSC(NRCHAN) CALC BRIGHTNESS TEMPERATURE FOR EACH CHANNEL
+C     I  NRPRED = NUMBER OF PREDICTORS (USED IN SAFETY CHECK)
+C     O  PRED(NRPRED) ARRAY OF PREDICTORS
+C     O  PCAT = CATEGORY (BIAS CORRECTED SEPERATELY FOR EACH CATEGORY)
+C     +     =1, SEA (FASTEM USED IN THIS CASE)
+C     +     =2, ICE
+C     +     =3, SEA+ICE
+C
+C     I GPRES  = GROUND PRESSURE (MBAR)
+C     I GWIND  = WIND VELOCITY AT 10 METERS (M/S)
+C     I GWINDIR  = WIND DIRECTION AT 10 METERS (DEG)
+C     I GTEMP  = GROUND TEMPERATURE (K)
+C     I GWATV  = GROUND WATER VAPOUR (KG/KG)
+C     I GOZONE = GROUND OZONE         (?,NOT USED?)
+C     I GWATL  = GROUND LIQUID WATER  (?,NOT USED?)
+C     I SOILM  = SOIL MOISTURE (KG/M**2, NOT USED?)
+C     I FRACTL = FRACTION OF LAND (0..1)
+C     I ALBEDO = ALBEDO (0..1) 
+C     I ICEC  = ICECOVER (0..1)
+C     I CLCOV  = IR CLOUD COVER (0..1) (NOT USED)
+C     I CLTOP  = CLOUD TOP PRESSURE (MBAR, NOT USED)
+C     I CLBOT  = CLOUD BOTTOM PRESSURE (MBAR, NOT USED)
+C     I NRLEV  = NUMBER OF LEVELS IN THE PROFILE (<=MAXLEV)
+C     I INPRES(NRLEV) = PRESSURE AT EACH LEVEL (MBAR)
+C     I TEMP(NRLEV) = AIR TEMPERATURE AT EACH LEVEL (K)
+C     I WATV(NRLEV) = WATER VAPOUR AT EACH LEVEL (KG/KG)
+C     I OZONE(NRLEV) = OZONE AT EACH LEVEL (?)
+C     I WATL(NRLEV) = LIQUID WATER AT EACH LEVEL (KG/M**2)
+C
+C     I NOE250 = SYSTEM FILE FOR RT-CALCULATIONS (BINARY)
+C     I NOA250 = SYSTEM FILE FOR RT-CALCULATIONS (ASCII)
+C
+C     O IRC=ERROR RETURN CODE, 0 = NO ERROR DETECTED
+C
+      IMPLICIT NONE
+      SAVE
+C
+      INTEGER  MAXCH,MAXLEV
+      PARAMETER (MAXCH = 35, MAXLEV = 31)
+C
+      CHARACTER*250 FN250,NOE250,NOA250,GOE250,GOA250
+      INTEGER    KODE
+      INTEGER  TIME(6)
+      REAL   LAT
+      REAL   LON
+      REAL   SHEIGHT
+      INTEGER  STYPE
+      REAL   SATZEN,SATAZI
+      CHARACTER*8 SATNAME
+      INTEGER  NRCHAN
+      INTEGER  CHINDEX(NRCHAN)
+      REAL   GPRES
+      REAL   GWIND,GWINDIR
+      REAL   GTEMP
+      REAL   GWATV
+      REAL   GOZONE
+      REAL   GWATL,
+     +     SOILM,FRACTL,ALBEDO,ICEC
+      REAL   CLCOV
+      REAL   CLTOP
+      REAL   CLBOT
+      INTEGER  NRLEV
+      REAL   INPRES(MAXLEV)
+      REAL   PRES(MAXLEV)
+      REAL   TEMP(MAXLEV)
+      REAL   WATV(MAXLEV)
+      REAL   OZONE(MAXLEV)
+      REAL   WATL(MAXLEV)
+      REAL   BTEMPSC(MAXCH)
+      INTEGER  NRPRED
+      REAL   PRED(NRPRED)
+      INTEGER  PPOS(NRPRED)
+      INTEGER  PCAT
+C
+      REAL   DBTDTPT(MAXLEV,MAXCH)
+      REAL   DBTDWPT(MAXLEV,MAXCH)
+      REAL   DBTDTS(MAXCH)
+      REAL   DBTDPS(MAXCH)
+C
+      INTEGER    IRC
+C
+#include "cparam.h"
+#include "prfcon.h"
+#include "prflim.h"
+#include "geocon.h"
+#include "prfref.h"
+C
+      INTEGER  II,JJ,TYPE
+      INTEGER  CLEV, LENS, LENGTH
+      EXTERNAL LENGTH
+      PARAMETER ( CLEV = 50 )
+      REAL   CPRES(CLEV), CTEMP(CLEV), 
+     &     CWATV(CLEV),COZONE(CLEV),
+     &     CNULL(CLEV)
+C
+      LOGICAL  INITIALISED,FIRST
+      CHARACTER*8 MYNAME
+C
+      INTEGER  ICHNOAA(23),ICHNOAAK(42),IPPF
+C
+C
+      INTEGER    TARGLEV
+      PARAMETER (TARGLEV=50)
+C
+      INTEGER    MNCHPF, KNSAT
+      PARAMETER (MNCHPF=46,KNSAT = 4)
+C
+      INTEGER  KIDSAT(KNSAT)
+C
+      REAL   TARGPRES(TARGLEV), 
+     &     AT(TARGLEV), AW(TARGLEV), AO(TARGLEV)
+      REAL   IPRES(TARGLEV)
+C
+C     VARIABLES DU MODELE DIRECT
+C
+      REAL   PEMIS(JPCHPF),PEMISK(JPCHPF)
+      REAL   PANGL,PANGS,PANGA,PANGSA
+      REAL   PAV(JPLEV,JPNAV),PSAV(JPNSAV)
+      REAL   PCV(JPNCV),PSSV(JPNSSV)
+      REAL   PRAD(JPCHPF),PTB(JPCHPF),PGRODY(6)
+      REAL   RADOV(JPCHPF,JPLEV),RADO(JPCHPF)
+      REAL   TAU(JPCHPF,JPLEV),TAUS(JPCHPF)
+      REAL   PAVK(JPLEV,JPNAV,JPCHPF),PSAVK(JPNSAV,JPCHPF)
+      REAL   PCVK(JPNCV,JPCHPF),PSSVK(JPNSSV,JPCHPF)
+      INTEGER  KSURF,KCHAN(JPCHPF),NKCHAN,KPROF(JPCHPF),JERR
+      INTEGER  IFAIL(JPPF,JPNSAT)
+C
+C      REAL   PAV(TARGLEV,JPNAV,JPPF), PSAV(JPNSAV,JPPF)
+C      REAL   PSSV(JPNSSV,JPPF),    PCV(JPNCV,JPPF)
+C      REAL   PRD(MNCHPF),         PTB(MNCHPF)
+C      REAL   PRDCL(MNCHPF),       PTBCL(MNCHPF)
+C
+      REAL   RAD
+C
+      INTEGER  NCHNOAA, NCHNOAAK
+      PARAMETER (NCHNOAA=23, NCHNOAAK=42)
+C
+C      DATA TARGPRES /  0.1,   0.2,   0.5,   1.0,
+C     &     1.5,     2.0,   3.0,   4.0,
+C     &     5.0,     7.0,  10.0,  15.0,  20.0,
+C     &     25.0,   30.0,  50.0,  60.0,
+C     &     70.0,   85.0, 100.0, 115.0, 135.0,
+C     &     150.0, 200.0, 250.0, 300.0,
+C     &     350.0, 400.0, 430.0, 475.0, 500.0,
+C     &     570.0, 620.0, 670.0, 700.0,
+C     &     780.0, 850.0, 920.0, 950.0, 1000.0/
+C
+C     INDICES DEFINING REGION OF WATER VAPOUR EXTRAPOLATION
+C
+      LOGICAL  KOK
+      INTEGER  ILEVW,KSAT,KNCHPF,ISAT,JL,MSAT,KINRAD,INDMAX
+      REAL   ZWMIN, ZOZMIN
+C
+      DATA ILEVW/1/  
+      DATA ZWMIN/0.002/        ! MIN STRATOSPHERIC MIXING RATIO IN G/KG
+      DATA ZOZMIN/0.001/       ! MIN OZONE MIXING RATIO IN PPMV
+C
+      DATA INITIALISED /.FALSE./
+      DATA MYNAME /'BTCALC5'/
+      DATA RAD /0.017453293/
+      DATA KOK /.FALSE./
+      DATA INDMAX/12/
+C
+      real sindeg, cosdeg
+      external sindeg,cosdeg
+C
+      INTEGER  ikode
+      REAL   TMAXLIM, TMINLIM
+      DATA TMAXLIM/400./,TMINLIM/150./
+C
+      IF (KODE.EQ.-1) THEN
+         IF (INITIALISED) THEN
+            WRITE(*,*) MYNAME,'ROUTINE IS ALLREADY INITIALISED'
+            IRC=36
+            RETURN
+         END IF
+C
+         FIRST=.TRUE.
+C
+         KIDSAT(1) = 12
+         KIDSAT(2) = 14
+         KIDSAT(3) = 15
+         KIDSAT(4) = 16
+C
+         LENS=LENGTH(SATNAME,12,6)
+         IF (SATNAME(1:LENS).EQ.'noaa12') THEN
+            KSAT=1
+            IF (NRCHAN.GT.NCHNOAA) THEN
+               IRC=37
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'noaa14') THEN
+            KSAT=2
+            IF (NRCHAN.GT.NCHNOAA) THEN
+               IRC=38
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'noaa15') THEN
+            KSAT=3
+            IF (NRCHAN.GT.NCHNOAAK) THEN
+               IRC=39
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'noaa16') THEN
+            KSAT=4
+            IF (NRCHAN.GT.NCHNOAAK) THEN
+               IRC=391
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'noaa17') THEN
+            KSAT=5
+            IF (NRCHAN.GT.NCHNOAAK) THEN
+               IRC=391
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'noaa18') THEN
+            KSAT=6
+            IF (NRCHAN.GT.NCHNOAAK) THEN
+               IRC=391
+               RETURN
+            END IF
+         ELSE IF (SATNAME(1:LENS).EQ.'metop-2') THEN
+            KSAT=6
+            IF (NRCHAN.GT.NCHNOAAK) THEN
+               IRC=391
+               RETURN
+            END IF
+         ELSE
+            WRITE(*,*) MYNAME,'Unknown satellite: ',
+     &           SATNAME(1:LENS)
+            IRC=40
+            RETURN
+         END IF
+C     
+C     READ NOAA/TOVS MODEL DATA...
+C
+         JERR=0
+         MSAT=0
+C         
+         CALL TOVCF(JERR,MSAT,KIDSAT,KNSAT,NOE250,NOA250,IRC) !TOVS
+         IF (IRC.EQ.0) IRC=JERR
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from TOVCF,',IRC
+            RETURN
+         END IF
+C
+         DO II=1,6
+            PGRODY(II)=0.0D0
+         END DO
+C
+         WMIN=ZWMIN             ! MIN STRATOSPHERIC VALUE
+         OZMIN1=ZOZMIN          ! MIN OZONE MIXING RATIO
+         NLEVW=ILEVW            ! TOP LEVEL FOR WV TRANSMITTANCE CALC
+         KNCHPF=NRCHAN
+C
+C     SET UP PROFILE LIMITS 
+C
+         DO ISAT = 1 , MSAT
+            DO JL = 1 , JPLEV
+               QMAX(JL,ISAT) = QMAX(JL,ISAT)*1000. ! convert to g/kg
+               QMIN(JL,ISAT) = QMIN(JL,ISAT)*1000. ! convert to g/kg
+               OZMAX(JL,ISAT) = OZMAX(JL,ISAT)*RCNV ! convert to ppmv
+               OZMIN(JL,ISAT) = OZMIN(JL,ISAT)*RCNV ! convert to ppmv
+            END DO
+         END DO
+C
+C     SET UP PRESSURE LEVEL CONSTANTS
+C
+         IF (JPLEV.GT.TARGLEV) THEN
+            WRITE(*,*) MYNAME,'Too many pressure levels!,',JPLEV
+            IRC=34
+            RETURN
+         END IF
+         DO II=1,JPLEV
+            TARGPRES(II)=PREF(II,1) ! pref is read by tovcf
+            IPRES(II)=PREF(II,1)
+            XPRES(II)=PREF(II,1)
+            XPRES2(II)=XPRES(II)*XPRES(II)
+         ENDDO
+         DPRES(1)=XPRES(1)
+         DO II=2,JPLEV
+            DPRES(II)=XPRES(II)-XPRES(II-1)
+         ENDDO
+C
+C     SET UP CONSTANTS FOR TRANSMITTANCE CALC.
+C
+C         PSSV(2) = 0.6
+C         PSSV(3) = 0.6
+C         PSSV(4) = 120.7
+C         PSSV(5) = 1.184
+C         PSSV(6) = 1.0
+C
+C     SET UP CLOUD COVER CONSTAND
+C
+         PCV(1) = 720.0         ! TOP PRESSURE
+         PCV(2) = 0.0           ! IR FRACTIONAL CLOUD
+C     
+C     INITIALISE SUPER SATURATION ROUTINE
+C     
+         CALL SATURATE_FT(KODE,JPLEV,TARGPRES,AT,AW,IRC)
+C
+         INITIALISED = .TRUE.
+      ELSE IF (KODE.EQ.0) THEN
+         IF (.NOT.INITIALISED) THEN
+            WRITE(*,*) MYNAME,'INITIALISE BEFORE USING ROUTINE'
+            IRC=41
+            RETURN
+         END IF
+C
+C     RETRIEVE WHICH CHANNELS TO CALCULATE
+C
+         NKCHAN=NRCHAN
+         DO II=1,NRCHAN
+            KCHAN(II) = CHINDEX(II)
+            KPROF(II) = 1
+         END DO
+C     
+C     SET UP EMISSIVITY
+C
+         IF  (PCAT.EQ.1) THEN ! Open water
+            DO II=1,NRCHAN
+               PEMIS(II)=0.0D0  ! Zero value forces RTTOV to call FASTEM
+C     PEMIS(II)=1.0D0
+            END DO
+         ELSEIF (PCAT.EQ.2) THEN ! sea ice
+            DO II=1,NRCHAN
+               PEMIS(II)=1.0D0 ! Ice treated as blackbody
+            END DO
+         ELSEIF  (PCAT.EQ.3) THEN ! border zone
+            DO II=1,NRCHAN
+               PEMIS(II)=0.45D0 + ICEC*0.5
+            END DO
+         ELSE  ! Undefined
+            WRITE(*,*) MYNAME,'Unknown surface type PCAT =', PCAT
+            IRC=388
+            RETURN
+         END IF
+C
+C     GET CLIMATOLOGICAL*4 PROFILES
+C
+         TYPE=0 ! pressure levels (mBar)
+         CALL GETCLIM(TYPE,TIME,LAT,LON,CPRES,IRC)
+C
+         TYPE=5 ! temperature (K)
+         CALL GETCLIM(TYPE,TIME,LAT,LON,CTEMP,IRC)
+C
+         TYPE=6 ! water vapour (Kg/Kg)
+         CALL GETCLIM(TYPE,TIME,LAT,LON,CWATV,IRC)
+C
+         TYPE=7                 ! ozone (Kg/Kg * 0.01)
+         CALL GETCLIM(TYPE,TIME,LAT,LON,COZONE,IRC)
+C
+C     INTERPOLATE TEMPERATURE TO THE RTTOV PRESSURE LEVELS
+C
+         DO II=1,NRLEV
+            PRES(II)=INPRES(II)
+         END DO
+C         
+         IKODE=-1
+         CALL PROINT (IKODE,JPLEV, TARGPRES, AT,
+     &        CLEV, CPRES, CTEMP,
+     &        NRLEV, PRES, TEMP,
+     &        IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from PROINT',IRC
+            RETURN
+         END IF
+         DO II=1,JPLEV
+            IF (AT(II).GT.TMAXLIM.OR.AT(II).LT.TMINLIM) THEN
+               WRITE(*,*) MYNAME,'Invalid level temp:',AT(II),II
+               IRC=88
+               RETURN
+            ENDIF
+            PAV(II,1)=AT(II)
+         END DO
+C
+C     INTERPOLATE HUMIDITY TO THE RTTOV PRESSURE LEVELS
+C
+         IKODE=0
+         CALL PROINT (IKODE,JPLEV, TARGPRES, AW,
+     &        CLEV, CPRES, CWATV,
+     &        NRLEV, PRES, WATV,
+     &        IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from PROINT',IRC
+            RETURN
+         END IF
+C     
+C     CHECK THAT WE DO NOT HAVE SUPER SATURATION
+C
+         CALL SATURATE_FT(KODE,JPLEV,TARGPRES,AT,AW,IRC)
+C     
+         DO II=1,JPLEV
+            PAV(II,2) = AW(II)
+         END DO
+C
+C     INTERPOLATE OZONE TO THE RTTOV PRESSURE LEVELS
+C
+         CALL PROINT (IKODE,JPLEV, TARGPRES, AO,
+     &        CLEV, CPRES, COZONE,
+     &        NRLEV, PRES, OZONE,
+     &        IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from PROINT',IRC
+            RETURN
+         END IF
+         DO II=1,JPLEV
+            PAV(II,3) = AO(II)
+         END DO
+C
+C     HARD-CODE LIQUID WATER TO ZERO...
+C
+         IF (FIRST) THEN
+            DO II=1,JPLEV
+               PAV(II,4) = 0.0D0
+            END DO
+            FIRST=.FALSE.
+         END IF
+C     
+C     CHECK SURFACE TEMPS WITHIN LIMITS, ELSE FAIL
+         IF (GTEMP.GT.TMAXLIM.OR.GTEMP.LT.TMINLIM) THEN
+            WRITE(*,*) MYNAME,'Invalid surface temp:',GTEMP,II
+            IRC=89
+            RETURN
+         ENDIF
+C     
+         PSAV(1) = GTEMP ! ground temperature (K)
+         PSAV(2) = GWATV ! ground water vapour (Kg/Kg)
+         PSAV(3) = GPRES ! ground pressure (mBar)
+C     
+C     CHECK THAT WE DO NOT HAVE SUPER SATURATION
+C
+         CALL SATURATE_FT(KODE,1,GPRES,GTEMP,GWATV,IRC)
+C
+         PSAV(4) = GWIND*COSDEG(SATAZI-GWINDIR) ! ground wind u-component (m/s)
+         PSAV(5) = GWIND*SINDEG(SATAZI-GWINDIR) ! ground wind v-component (m/s)
+C         PSAV(5) = GOZONE ! ground ozone (Kg/Kg)
+C
+         PSSV(1) = GTEMP
+C
+         PANGL = SATZEN         ! sat zenith
+         PANGA = 0.0D0          ! sat azimuth
+         PANGS = 0.0D0          ! solar zenith
+         PANGSA = 0.0D0         ! solar azimuth
+C
+C     SURFACE TYPE 1=Sea 
+C
+
+         IF (STYPE.EQ.0) THEN   ! HIRLAM SAYS SEA...
+C     KSURF = MIN(2,JPST) ! SEA...
+            KSURF= 1  ! RTTOV treats KSURF=1 as ocean
+         ELSE
+C     KSURF = MIN(3,JPST) 
+            KSURF= 3            ! What does RTTOV with 3 ?
+         END IF
+C
+         CALL RTTOV(JPPF,JPLEV,JPNAV,JPNSAV,JPNSSV,JPNCV,
+     &        IPRES,PANGL,PANGA,PANGS,PANGSA,PGRODY,KSURF,
+     &        KSAT,NKCHAN,KCHAN,KPROF,
+     &        PAV,PSAV,PSSV,PCV,PEMIS,
+     &        IFAIL,PRAD,PTB,RADOV,RADO,
+     &        TAU,TAUS)
+         IF (IFAIL(1,KSAT).NE.0) THEN
+            IRC=IFAIL(1,KSAT)
+            WRITE(*,*) MYNAME,'Error return from RTTOV,',IRC
+            RETURN
+         END IF
+C
+C      SUBROUTINE RTTOV(KNPF,KLENPF,KNAV,KNSAV,KNSSV,KNCV,
+C     * PPRES,PANGL,PANGA,PANGS,PANGSA,PGRODY,KSURF,KSAT,KNCHPF,
+C     * KCHAN,KPROF,PAV,PSAV,PSSV,PCV,PEMIS,IFAIL,PRAD,PTB,RADOV,
+C     * RADO,TAU,TAUSFC)
+C
+C         CALL RTTOV(KNPF,JPLEV,KNAV,KNSAV,KNSSV,KNCV,
+C     1        IPRES,PANGL,PANGS,PANGA,KCLD,KSURF,
+C     2        KSAT,KNCHPF,KCHAN,KPROF,
+C     3        PAV,PSAV,PSSV,PCV,
+C     4        PRD,BTEMPSC2,PRDOV,PRDO,PRDCL,PTBCL,
+C     5        PTAU,PTAUS)
+C
+         DO II=1,NRCHAN
+            BTEMPSC(II)=PTB(II)
+         END DO
+C
+C     CALCULATE THE PREDICTORS
+C
+         IF (NRPRED.NE.7) THEN
+            WRITE(*,*) MYNAME,'System hard-coded '//
+     &           'predictor mismatch.',NRPRED
+            IRC=998
+            RETURN
+         END IF
+C
+         PRED(1) = 1.0D0 ! CONSTANT DISPLACEMENT
+         PRED(2) = 0.0D0 ! MEAN TEMP 1000 - 300
+         PRED(3) = 0.0D0 ! MEAN TEMP 200 - 50
+         PRED(4) = 0.0D0 ! GROUND TEMP
+         PRED(5) = 0.0D0 ! INTEGRATED WATV
+         PRED(6) = 0.0D0 ! SCAN ANGLE**2
+         PRED(7) = 0.0D0 ! SCAN ANGLE
+C
+         DO II=26,40            ! 1000 - 300 hPa
+            PRED(2)=PRED(2)+(AT(II)+AT(II-1))*
+     &           LOG(TARGPRES(II)/TARGPRES(II-1))
+         END DO
+         DO II=17,24            ! 200 - 50 hPa
+            PRED(3)=PRED(3)+(AT(II)+AT(II-1))*
+     &           LOG(TARGPRES(II)/TARGPRES(II-1))
+         END DO
+         PRED(4)=GTEMP
+         CALL GET_IWATV (PRED(5),NRLEV,PRES, 
+     &        WATV,GPRES,IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from GET_IWATV.',IRC
+            RETURN
+         END IF
+         PRED(6)=SATZEN*SATZEN
+         PRED(7)=SATZEN
+C
+         KOK=.TRUE.
+C
+      ELSE IF (KODE.EQ.1) THEN
+         IF (INITIALISED) THEN
+C     
+C     WRAP UP SUPER SATURATION ROUTINE
+C     
+            CALL SATURATE_FT(KODE,JPLEV,TARGPRES,AT,AW,IRC)
+C
+            INITIALISED = .FALSE.
+         END IF
+      ELSE
+         WRITE(*,*) MYNAME,'UNKNOWN KODE:',KODE
+         IRC=999
+         RETURN
+      END IF
+C
+      RETURN
+C     
+      ENTRY BTCALCK5(
+     &     NRCHAN,NRLEV, 
+     &     DBTDTPT,DBTDTS,DBTDWPT,DBTDPS,
+     &     IRC)
+C
+C     NRCHAN = NUMBER OF CHANNELS
+C     NRLEV = NUMBER OF LEVELS
+C     DBTDTPT(MAXLEV,MAXCHAN)
+C     +    DBTDTPT(II,JJ) = D(BTCALC(JJ))/D(TEMP(II))
+C     DBTDTS(MAXCHAN)
+C     +    DBTDTS(II)    = D(BTCALC(II))/D(GTEMP)
+C     DBTDWPT(MAXLEV,MAXCHAN)
+C     +    DBTDWPT(II,JJ) = D(BTCALC(JJ))/D(WATV(II))
+C     DBTDPS(MAXCHAN)
+C     +    DBTDWP(II)    = D(BTCALC(II))/D(GPRES)
+C
+      IF (.NOT.KOK) THEN
+         WRITE(*,*) MYNAME,'Can not call RTTOVK before RTTOV.'
+         IRC=43
+         RETURN
+      END IF
+C
+      KINRAD=2 ! brightness temperatures
+      CALL RTTOVK(JPPF,JPLEV,JPNAV,JPNSAV,JPNSSV,JPNCV,
+     &     IPRES,PANGL,PANGA,PANGS,PANGSA,PGRODY,KSURF,
+     &     KSAT,NKCHAN,KCHAN,KPROF,
+     &     PAVK,PSAVK,PSSVK,PCVK,PEMISK,
+     *     PAV,PSAV,PSSV,PCV,PEMIS,
+     *     PRAD,PTB,KINRAD,IFAIL)
+C
+      IF (IFAIL(1,KSAT).NE.0) THEN
+         IRC=IFAIL(1,KSAT)
+         WRITE(*,*) MYNAME,'Error return from RTTOV,',IRC
+         RETURN
+      END IF
+C
+      IKODE=-1
+      DO II=1,NRCHAN
+C
+         DO JJ=1,CLEV
+            CNULL(JJ)=0
+         END DO
+C
+C     interpolate partial derivatives wrt temp.
+         CALL PROINK (IKODE,JPLEV, TARGPRES, PAVK(1,1,II),
+     &        CLEV, CPRES, CNULL,
+     &        NRLEV, PRES, DBTDTPT(1,II),
+     &        IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from PROINK',IRC
+            RETURN
+         END IF
+         IKODE=0
+C     DBTDTS(II)=PSAVK(1,II) ! ground temp
+C     DBTDTS(II)=PSSVK(1,II) ! skin temp
+         DBTDTS(II)=PSAVK(1,II) + PSSVK(1,II)
+C
+         DO JJ=1,CLEV
+            CNULL(JJ)=0
+         END DO
+C
+C     interpolate partial derivatives wrt watv.
+         CALL PROINK (IKODE,JPLEV, TARGPRES, PAVK(1,2,II),
+     &        CLEV, CPRES, CNULL,
+     &        NRLEV, PRES, DBTDWPT(1,II),
+     &        IRC)
+         IF (IRC.NE.0) THEN
+            WRITE(*,*) MYNAME,'Error return from PROINK',IRC
+            RETURN
+         END IF
+C
+C     derivative wrt. ground pressure...
+C
+         DBTDPS(II)=PSAVK(3,II) ! ground pressure
+C
+      END DO
+C     
+      RETURN
+C
+      END

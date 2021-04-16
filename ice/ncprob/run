@@ -1,0 +1,4 @@
+#!/bin/sh
+#./ttt.bin
+./ncprob.bin  < ncprob.in
+#

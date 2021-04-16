@@ -1,0 +1,7 @@
+      INTEGER    MAXCAT
+      PARAMETER (MAXCAT=3)
+C
+C     PCAT=1 ! SEA
+C     PCAT=2 ! ICE
+C     PCAT=3 ! BORDER ZONE
+C      

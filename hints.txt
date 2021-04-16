@@ -1,0 +1,3 @@
+module load netcdf
+module load netcdf-fortran
+make

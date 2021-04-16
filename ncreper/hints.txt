@@ -1,0 +1,41 @@
+
+ sudo apt install valgrind
+
+ valgrind --leak-check=full --trace-children=yes ./run
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+memprof:
+sudo apt-get install gtk+2.0
+sudo apt-get install libglade2-dev
+sudo apt-get install binutils-dev
+
+sudo apt install apt-file
+apt-file find bfd.h
+
+
+module load fimex
+fimex /lustre/storeB/project/metproduction/products/meps/meps_lagged_6_h_subset_2_5km_20210302T12Z.ncml --extract.selectVariables=surface_geopotential --extract.pickDimension.name=time --extract.pickDimension.list=0 --extract.pickDimension.name=ensemble_member --extract.pickDimension.list=0 --ncml.config=surf_pot.ncml --output.file=surf_pot.nc4
+
+
+
+
+
+
+Saa for AA bruker vi katalogen
+   /lustre/storeB/project/metproduction/products/arome_arctic
+og filer av typen:
+   /arome_arctic_extracted_2_5km_20200623T06Z.nc
+og variabelen:
+  wind_speed
+
+For EC -mb0 bruker vi katalogen:
+   /lustre/storeB/project/metproduction/products/ecmwf/nc
+og filer av typen:
+  ec_atmo_0_1deg_20200622T120000Z_1h.nc
+og variabelene:
+  x_wind_10m, y_wind_10m
+som maa pre-prosesseres til
+   wind_speed_10m
+
+...mens for EC -p95 bruker vi filene av typen:
+  ec_ens_20200622T120000Z.nc

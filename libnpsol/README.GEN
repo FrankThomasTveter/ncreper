@@ -1,0 +1,117 @@
+Double precision NPSOL, Version 4.05, November  28, 1989.
+
+    The original distribution files DPMACH.FOR, DPLSCODE.FOR, and DPNPCODE.FOR 
+were renamed and/or split as follows: 
+
+DPMACH.FOR         1.  File  DPMCSUBS.FOR
+ 
+DPLSCODE.FOR       2.  File  DPF06.FOR
+                   3.  File  DPQRSUBS.FOR
+                   4.  File  DPCMSUBS.FOR
+                   5.  File  DPLSSUBS.FOR
+                   6.  File  DPOPSUBS.FOR
+
+DPNPCODE.FOR       7.  File  DPCHSUBS.FOR
+                   8.  File  DPNPSUBS.FOR
+                   9.  File  DPSRSUBS.FOR
+
+
+    Assuming that all the above files are together on the same subdirectory, a 
+BAT file to generate the original distribution files is: 
+
+copy DPMCSUBS.FOR DPMACH.FOR /B
+copy DPF06.FOR+DPQRSUBS.FOR+DPCMSUBS.FOR+DPLSSUBS.FOR+DPOPSUBS.FOR DPLSCODE.FOR /B
+copy DPCHSUBS.FOR+DPNPSUBS.FOR+DPSRSUBS.FOR DPNPCODE.FOR /B
+
+
+    The original distribution files DPLSMAIN.FOR, LSMAIN.DAT, DPNPMAIN.FOR, and 
+NPMAIN.DAT are unchanged.  
+
+
+    The distribution DPMACH.FOR (aka DPMCSUBS.FOR) determines machine 
+parameters by triggering underflows, overflows, etc., reads from unit 5, and 
+writes to unit 6.  Some hardwired versions of DPMACH for a Sun 4/330, a VAX 
+with the g-float compiler option set, and an IBM 3090 are included with the 
+files listed above.  They read from unit 1 and write to unit 3.  These files 
+are: DPMACH.SUN, DPMACH-G.VAX, and DPMACH.IBM.  
+
+
+    The following is an excerpt from DPNPSUBS.FOR:
+
+*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+      SUBROUTINE NPSOL ( N, NCLIN, NCNLN, LDA, LDCJU, LDR,
+     $                   A, BL, BU,
+     $                   CONFUN, OBJFUN,
+     $                   INFORM, ITER, ISTATE,
+     $                   C, CJACU, CLAMDA, OBJF, GRADU, R, X,
+     $                   IW, LENIW, W, LENW )
+
+      IMPLICIT           DOUBLE PRECISION(A-H,O-Z)
+      EXTERNAL           CONFUN, OBJFUN
+      INTEGER            ISTATE(N+NCLIN+NCNLN)
+      INTEGER            IW(LENIW)
+      DOUBLE PRECISION   A(LDA,*), BL(N+NCLIN+NCNLN),
+     $                   BU(N+NCLIN+NCNLN)
+      DOUBLE PRECISION   C(*), CJACU(LDCJU,*), CLAMDA(N+NCLIN+NCNLN)
+      DOUBLE PRECISION   GRADU(N), R(LDR,*), X(N)
+      DOUBLE PRECISION   W(LENW)
+
+*-----------------------------------------------------------------------
+*
+*  NPSOL   solves the nonlinear programming problem
+*
+*            minimize                   F(x)
+*
+*                                    (    x  )
+*            subject to    bl  .le.  (  A*x  )  .le.  bu
+*                                    (  c(x) )
+*
+*  where  F(x)  is a smooth scalar function,  A  is a constant matrix
+*  and  c(x)  is a vector of smooth nonlinear functions.  The feasible
+*  region is defined by a mixture of linear and nonlinear equality or
+*  inequality constraints on  x.
+*
+*  The dimensions of the problem are...
+*
+*  N        the number of variables (dimension of  x),
+*
+*  NCLIN    the number of linear constraints (rows of the matrix  A),
+*
+*  NCNLN    the number of nonlinear constraints (dimension of  c(x)),
+*
+*
+*  NPSOL   uses a sequential quadratic programming algorithm, with a
+*  positive-definite quasi-Newton approximation to the transformed
+*  Hessian  Q'HQ  of the Lagrangian function (which will be stored in
+*  the array  R).
+*
+*
+*  Complete documentation for  NPSOL  is contained in Report
+*  SOL 86-2, Users guide for NPSOL (Version 4.0), by P.E. Gill,
+*  W. Murray, M.A. Saunders and M.H. Wright, Department of Operations
+*  Research,  Stanford University, Stanford, California 94305.
+*
+*  Systems Optimization Laboratory, Stanford University.
+*  Version 1.1,  April     12, 1983. (The less said about this one.....)
+*  Version 2.0,  April     30, 1984.
+*  Version 3.0,  March     20, 1985. (First Fortran 77 version).
+*  Version 3.2,  August    20, 1985.
+*  Version 4.0,  April     16, 1986. (First version with differences).
+*  Version 4.01, June      30, 1986. (Level 2 BLAS + F77 linesearch).
+*  Version 4.02, August     5, 1986. (Reset SSBFGS. One call to CHFD).
+*  Version 4.03, June      14, 1987. (Step limit).
+*  Version 4.04, June      28, 1989. (Vectorizable BLAS).
+*  Version 4.05, November  28, 1989. (Load and save files added).
+*
+*  Copyright  1983  Stanford University.
+*
+*  This material may be reproduced by or for the U.S. Government pursu-
+*  ant to the copyright license under DAR Clause 7-104.9(a) (1979 Mar).
+*
+*  This material is based upon work partially supported by the National
+*  Science Foundation under Grants MCS-7926009 and ECS-8312142; the
+*  Department of Energy Contract AM03-76SF00326, PA No. DE-AT03-
+*  76ER72018; the Army Research Office Contract DAA29-84-K-0156;
+*  and the Office of Naval Research Grant N00014-75-C-0267.
+*  ---------------------------------------------------------------------

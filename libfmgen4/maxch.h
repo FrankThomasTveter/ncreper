@@ -1,0 +1,2 @@
+      INTEGER MAXCH
+      PARAMETER (MAXCH=35)

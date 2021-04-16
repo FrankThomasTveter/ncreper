@@ -1,0 +1,84 @@
+raw <- read.table("fort.10")
+
+par(mfrow=c(1,1))
+plot ( raw[raw[,1]==8,3],raw[raw[,1]==8,6])
+lines(c(450.,550.),c(0.,0.))
+lines(c(500.,500.),c(-5.,5.))
+
+
+
+par(mfrow=c(1,1))
+plot ( raw[raw[,1]==9,3],raw[raw[,1]==9,6])
+lines(c(450.,550.),c(0.,0.))
+lines(c(500.,500.),c(-5.,5.))
+
+
+
+
+
+
+raw <- read.table("prob.dmp")
+
+par(mfrow=c(4,5))
+  for (ii in 2:4) {
+   k <- raw[,1]==ii
+   for (jj in 1:ii) {
+      hist (raw[k,1+jj],xlab=paste("a-priori prob"),
+           main=paste(" Nambg=",ii,", Iambg=",jj," mean=",mean(raw[k,1+jj])),xlim=c(0.,1.),
+           border=TRUE, nclass=50);
+      hist (raw[k,5+jj],xlab=paste("a-posteriori prob"),
+           main=paste(" Nambg=",ii,", Iambg=",jj," mean=",mean(raw[k,5+jj])),xlim=c(0.,1.),
+           border=TRUE, nclass=50);
+   }
+}
+
+#postscript(file='prob.ps',horizontal=T)
+par(mfrow=c(2,1))
+ii<-4
+k <- raw[,1]==ii
+jj <- 1
+hist (raw[k,1+jj],xlab=paste("a-priori prob"),
+     main=paste("Nambg=",ii,", Iambg=",jj),xlim=c(0.,1.),
+     border=TRUE, nclass=50);
+hist (raw[k,5+jj],xlab=paste("a-posteriori prob"),
+     main=paste("Nambg=",ii,", Iambg=",jj),xlim=c(0.,1.),
+     border=TRUE, nclass=50);
+
+mean(raw[k,1+jj])
+mean(raw[k,5+jj])
+
+#dev.off()
+
+
+raw1 <- read.table("jnk.ascii")
+
+
+thinf <- 5
+thin <- c(F,T)[rep(c(2,c(1)[rep(c(1),thinf)]),length.out=length(raw1[,1]))]
+ref <- 1
+raw <- raw1[thin,]
+raw <- raw1
+
+#postscript(file='ers.ps',horizontal=T)
+par(mfrow=c(1,2), mkh=.025)
+
+plot(raw[,5][raw[,ref+6]>0.],raw[,ref+6][raw[,ref+6]>0.],
+    xlab=paste("Hirlam Wind Speed"),
+    ylab=paste("Ambg ",ref," Wind Speed"))
+lines(raw[,ref+6][raw[,ref+6]>0.],raw[,ref+6][raw[,ref+6]>0.])
+title(paste("Wind Speed Comparison \n",
+    "(SD :",round(sqrt(var(raw[,ref+6][raw[,ref+6]>0.]-raw[,5][raw[,ref+6]>0.])),2),
+    ", Mn (o-m):",round(mean(raw[,ref+6][raw[,ref+6]>0.]-raw[,5][raw[,ref+6]>0.]),2),
+    ", Cnt :",length(raw[,ref+6][raw[,ref+6]>0.]-raw[,5][raw[,ref+6]>0.]),")"))
+
+plot(raw[,6][raw[,ref+10]>0.],raw[,ref+10][raw[,ref+10]>0.],
+    xlab=paste("Hirlam Wind Direction"),
+    ylab=paste("Ambg ",ref," Wind Direction"))
+lines(raw[,ref+10][raw[,ref+10]>0.],raw[,ref+10][raw[,ref+10]>0.])
+title(paste("Wind Direction Comparison \n",
+    "(SD :",round(sqrt(var(raw[,ref+10][raw[,ref+10]>0.]-raw[,6][raw[,ref+10]>0.])),2),
+    ", Mn (o-m) :",round(mean(raw[,ref+10][raw[,ref+10]>0.]-raw[,6][raw[,ref+10]>0.]),2),
+    ", Cnt :",length(raw[,ref+10][raw[,ref+10]>0.]-raw[,6][raw[,ref+10]>0.]),")"))
+
+#dev.off()
+
