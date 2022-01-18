@@ -658,7 +658,6 @@ contains
        call ncf_checkContents(inp,dum250,r%bop,irc)
        if (irc.ne.0) then
           write(*,*)myname,' Error return from ncf_checkContents.',irc
-          return
        end if
        if (i%lfldat(55)) then
           r%bop=.true.
@@ -2098,7 +2097,14 @@ contains
                                   o%fd(lo)=o%filld
                                end if
                             else if (v%fd(li).gt.aretper(aretmax(newnn))) then ! above
-                               o%fd(lo)=aretper(aretmax(newnn))
+                               left=1
+                               right=newnn
+                               left=aretmax(left) 
+                               right=aretmax(right)
+                               o%fd(lo)=extrapolate(aretper(left),r%ret%parid%fd(left),&
+                                    & aretper(right),r%ret%parid%fd(right), &
+                                    & v%fd(li))
+                               ! o%fd(lo)=r%ret%parid%fd(aretmax(newnn))
                             else                                               ! between
                                call sort_heapsearch1r(nretper,aretper,eps,newnn,aretmax,v%fd(li),left,right)
                                if (right.eq.0) then
@@ -2119,7 +2125,14 @@ contains
                             end if
                          else                        ! minimum event
                             if (v%fd(li).lt.aretper(aretmin(1))) then ! below
-                               o%fd(lo)=aretper(aretmin(1))
+                               left=newnn
+                               right=1
+                               left=aretmin(left)
+                               right=aretmin(right)
+                               o%fd(lo)=extrapolate(aretper(left),r%ret%parid%fd(left),&
+                                    & aretper(right),r%ret%parid%fd(right), &
+                                    & v%fd(li))
+                               ! o%fd(lo)=r%ret%parid%fd(aretmin(1))
                             else if (v%fd(li).gt.aretper(aretmin(newnn))) then ! above highest return_level
                                if (i%lfldat(31)) then
                                   if (aretper(aretmin(newnn)).le.0.0D0.and.v%fd(li).le.i%zero) then
@@ -2239,6 +2252,32 @@ contains
     end if
     write(*,*)myname,' Closing: ',i%rp250(r%tnrrp)(1:lenp)
   end subroutine addReturnPeriod
+  !
+  ! extrapolate return period
+  !
+  real function extrapolate(val0, yrp0, val1, yrp1, val)
+    real :: val0, yrp0
+    real :: val1, yrp1
+    real :: val, yrp
+    real dval, dyrp, sigma, factor
+    real,parameter :: gamma=10.0D0
+    real,parameter :: eps=0.01D0
+    dval=val0-val1
+    dyrp=Log(yrp0)-Log(yrp1)
+    if (abs(dval).lt.1.0D-10) then
+       yrp=yrp1 + eps
+    else
+       !! Generalized Pareto Distribution
+       !sigma=dyrp/dval
+       !factor=(1.0D0+gamma*(val-val1)/sigma)**(1.0D0/gamma)
+       !yrp=yrp1*factor
+       !!write(*,*)'Extrapolate:',val0,yrp0,val1,yrp1,val,yrp,sigma,factor
+       !!yrp=yrp1*Exp(dyrp*(val-val1)/dval)
+       yrp=yrp1 + eps
+    end if
+    extrapolate=min(yrp,yrp1*10.0D0)
+    return
+  end function extrapolate
   !
   ! Add PST or AVG variables
   !
