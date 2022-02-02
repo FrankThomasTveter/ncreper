@@ -1544,6 +1544,7 @@ contains
        do ii=1,i%nrimp
           ! check if variable already exists
           r%bok=.false. ! we dont expect to find this variable (silent)
+          ri => impVariable(ii)%ptr;
           lenii=length(i%imp250(ii),250,10)
           zi => ncf_getVariable(out,i%imp250(ii)(1:lenii),r%bok,irc)
           if (r%bok) then
@@ -1555,8 +1556,8 @@ contains
           ! make import-variable in output file...
           !
           if (.not.r%bok) then ! make import variable
-             !write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'"
-             ri => impVariable(ii)%ptr;
+             !write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'",&
+             !     & ii,associated(impVariable(ii)%ptr)
              zi => ncf_copyVariable(ri,irc)
              if (irc.ne.0) then
                 write(*,*)myname,' Error return from ncf_copyVariable.',irc
@@ -2259,7 +2260,7 @@ contains
     real :: val0, yrp0
     real :: val1, yrp1
     real :: val, yrp
-    real dval, dyrp, sigma, factor
+    real dval, dyrp ! , sigma, factor
     real,parameter :: gamma=10.0D0
     real,parameter :: eps=0.01D0
     dval=val0-val1
