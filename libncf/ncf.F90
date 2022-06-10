@@ -6444,15 +6444,15 @@ contains
     type(variable), pointer :: v
     integer :: ii
     character*20 :: myname = "ncf_printInventory"
+    do ii=1,i%nrdim
+       write(*,*)myname,ii,i%dim250(ii)(1:i%lend(ii))
+    end do
+    call ncf_printPos(i%pos)
     v=>i%firstvariable%next
     do while (.not.associated(v,target=i%lastVariable))
        call ncf_printVariable(v)
        v=>v%next
     end do
-    do ii=1,i%nrdim
-       write(*,*)myname,ii,i%dim250(ii)(1:i%lend(ii))
-    end do
-    call ncf_printPos(i%pos)
     return
   end subroutine ncf_printInventory
 

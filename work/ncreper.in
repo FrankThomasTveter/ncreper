@@ -1,33 +1,40 @@
-#
+
 # ?
 # exit
 #
  NCREPER V1.0 [0]
 #
  INPUT FILE (NETCDF) [1]
-#  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_ens_snowfall/meps_lagged_6_h_subset_2_5km_alarm_snowfall_20210301T12Z.nc
-  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_mb0_snowfall/meps_det_2_5km_alarm_snowfall_20210301T12Z.nc
-#
- AUXILIARY FILE (NETCDF) [1]
-#  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_ens_snowfall/meps_lagged_6_h_subset_2_5km_alarm_snowfall_20210301T12Z.nc.gp
-  /lustre/storeA/users/franktt/ecflowdata/products/alarm/meps_prep_mb0_snowfall/meps_det_2_5km_alarm_snowfall_20210301T12Z.nc.gp
-#
- USE AUXILIARY VAR, REMOVE DIMENSIONS [*]
-   surface_geopotential time ensemble_member
+   /lustre/storeB/project/metproduction/products/alarm/pull_meps_mb0_regn/meps_det_2_5km_alarm_regn_20211001T06Z.nc
 #
  OUTPUT FILE (NETCDF) [1]
-   snowfall.nc
+  meps_det_2_5km_alarm_regn_20211001T06Z_RR24h.nc
 #
  NUMBER OF DATA SLICES [1]VFL
     10
 #
-# ENSEMBLE DIMENSION
-#   ensemble_member
+ RETPER FILE (NETCDF) [*]
+  /lustre/storeB/project/metproduction/static_data/alarm/meps_return_level_annual.nc
+
 #
-# MAKE ENSEMBLE AVERAGE
+ ZERO RETPER LEVEL [1]
+    0.0D0
 #
-# NEW VAR, OLD ENSEMBLE VAR
-#  snowfall_amount_acc_exp  snowfall_amount_acc
+ IMPORT VARIABLES FROM RETPER FILE [*]
+   land_area_fraction
+#
+ PUT RETPER VARS IN OUTPUT FILE [0]
+#
+ NEW VAR, OLD VAR, DIFFERENTIATE OVER HOURS, MIN, MAX [*]
+    precipitation_24h    precipitation_amount_acc    24   0.0D0   1.0D15
+#
+ RETPER DIM[1]
+    return_period
+#
+ NEW VAR, OLD VAR, RETPER VAR [*]
+    precipitation_24h_return_period precipitation_24h precipitation_amount_acc_24h_return_level
+#
+
 #
  KEEP VARS [*]VFLR
     surface
@@ -43,8 +50,12 @@
     longitude
     projection_lambert
     projection_regular_ll
-#
-    snowfall_amount_acc
-    snowfall_amount_acc_exp
-    surface_geopotential
-#
+    land_area_fraction
+
+    precipitation_24h  precipitation_24h_mb0
+    precipitation_24h_return_period precipitation_24h_return_period_mb0
+
+#    precipitation_24h_mb0
+#    precipitation_24h_return_period_mb0
+#    return_period
+#    precipitation_amount_acc_24h_return_level

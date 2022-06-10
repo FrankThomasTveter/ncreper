@@ -31,6 +31,10 @@ SUBROUTINE MNCREPER(UNITI,IRC)
   DATA MYNAME /'MNCREPER'/
   logical :: bdeb=.false.
   ! 
+  type invptr
+     type(inventory), pointer :: ptr=>null()
+  end type invptr
+  !
   type varptr
      type(variable), pointer :: ptr=>null()
   end type varptr
@@ -42,7 +46,7 @@ SUBROUTINE MNCREPER(UNITI,IRC)
   INTEGER, PARAMETER :: MAXFILTER=100
   INTEGER, PARAMETER :: MAXCOR=10
   INTEGER, PARAMETER :: MAXIMP=10
-  INTEGER, PARAMETER :: MAXSPD=10, MAXRP=10
+  INTEGER, PARAMETER :: MAXSPD=10, MAXRP=20
   INTEGER, PARAMETER :: MAXPST=10
   INTEGER, PARAMETER :: MAXGRP = 100
   INTEGER, PARAMETER :: MAXVAR = 100
@@ -56,7 +60,7 @@ SUBROUTINE MNCREPER(UNITI,IRC)
      LOGICAL :: LFLDAT(NRHDR)
      character*250 :: inp250, out250, aux250
      character*250 :: dim250, gus250, guv250, gud250
-     character*250 :: rpd250
+     character*250 :: rpd250(maxrp)
      integer :: leni,lena
      !
      integer :: nraux = 0
@@ -78,12 +82,13 @@ SUBROUTINE MNCREPER(UNITI,IRC)
      logical :: biflt
      integer ::nrcor
      character*250 :: cor250(maxcor)
-     integer :: nrimp
+     integer :: nrimp,limp(maxrp)
      character*250 :: imp250(maximp)
      !
-     integer :: nrspd, nrrp, islice
+     integer :: nrspd, nrrp, nrlbl, islice
+     character*100 :: lbl100(maxrp),l100
      character*250 :: spd250(maxspd),wx250(maxspd),wy250(maxspd),rp250(maxrp)
-     integer :: gul, gudEntry
+     integer :: gul, gudEntry, lrp(maxrp)
      !
      integer :: nrpst
      real :: trg, zero, dimpst(maxpst), outpst(maxpst), vvmax(maxspd)
@@ -101,13 +106,13 @@ SUBROUTINE MNCREPER(UNITI,IRC)
      !
      integer :: nrret = 0
      character*250 :: net250(maxret),ret250(maxret),per250(maxret)
-     integer :: lennet(maxret),lenret(maxret),lenper(maxret)
+     integer :: lennet(maxret),lenret(maxret),lenper(maxret),lret(maxret)
      !
   end type init
   !
   type run
      logical :: initWrite
-     logical brp,bok,bop,aop
+     logical brp(maxrp),bok,bop,aop
      !
      type(dimension), pointer :: dslice=>null() ! slice-dimension
      type(dimension), pointer :: aslice=>null() ! auxiliary slice-dimension
@@ -120,10 +125,10 @@ SUBROUTINE MNCREPER(UNITI,IRC)
      type(dimensionOrder), pointer  ::  ixydo=>null()
      type(dimensionOrder), pointer  ::  axydo=>null()
      !
-     integer :: tnrrp
+     integer :: tnrrp(maxrp)
      real :: t2000
      !
-     type(inventory), pointer  :: ret => null()   ! return period...
+     type(invptr), pointer  :: ret(:)   ! return period...
      type(dimensionOrder), pointer  ::  odo=>null(),ido=>null(),ado=>null()
      type(dimension), pointer :: rz=>null() ! return level dimension
      type(dimension), pointer :: ro=>null() ! return level dimension in output file
@@ -346,7 +351,8 @@ SUBROUTINE MNCREPER(UNITI,IRC)
         !
      end if
      if(bdeb)write(*,*)myname,'Wrapping up.'
-     !call ncf_checkInventory(inp,irc)
+     ! call ncf_checkInventory(inp,irc)
+     ! call ncf_printinventory(out)
      !
      ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      ! DUMP SLICE TO OUTPUT FILE
@@ -390,7 +396,7 @@ contains
     CHARACTER*250 NUKEHEAD
     EXTERNAL NUKEHEAD
     INTEGER  INTOUT
-    LOGICAL  ENDOFF
+    LOGICAL  ENDOFF,FOUND
     CHARACTER*14 MYNAME
     DATA MYNAME /'readInit'/
     integer :: lenb,lend, lenh
@@ -404,9 +410,17 @@ contains
     i%nrspd=0
     i%nrpst=0
     i%nrrp=0
+    i%nrlbl=0
     i%nrimp=0
     i%nrvar=0
     i%zero=0.0D0
+    DO II=1,MAXRP
+       i%rpd250(ii)=""
+       call chop0(i%rpd250(ii),250)
+       i%lbl100(II)=""
+       i%rp250(ii)=""
+       i%lrp(ii)=0
+    END DO
     !
     DO II=1,NRHDR
        HDR250(II) = ''
@@ -429,7 +443,7 @@ contains
     HDR250(55)  = 'OUTER COORDINATE DIMENSIONS [*]VFLR'
     HDR250(60)  = 'NEW VAR, OLD VAR, DIFFERENTIATE OVER HOURS, MIN, MAX [*]VFLRM'
     HDR250(70)  = 'NEW VAR, OLD VAR, RETPER VAR [*]VFLR%1&'
-    HDR250(80)  = 'RETPER DIM[1]VFLR%1&'
+    HDR250(80)  = 'RETPER DIM[*]VFLR%1&'
     HDR250(85)  = 'ENSEMBLE DIMENSION [1]VFLR%2&1'
     HDR250(86)  = 'MAKE ENSEMBLE AVERAGE [0]VFLR%2%1'
     HDR250(87)  = 'ENSEMBLE PERCENTILE, ID [*]VFLR%2%1'
@@ -496,16 +510,46 @@ contains
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.30) THEN ! retper file
           i%nrrp=min(maxrp,i%nrrp+1)
-          i%rp250(i%nrrp)=dat250
+          i%rp250(i%nrrp)=nukehead(dat250,250)
+          i%l100=dat250(1:100)
+          call chop0(i%l100,100)
+          ! Store label
+          i%lrp(i%nrrp)=0
+          do ii=1,i%nrlbl
+             if (i%l100.eq.i%lbl100(ii)) then
+                i%lrp(i%nrrp)=ii
+                exit ! the do loop
+             end if
+          end do
+          if (i%lrp(i%nrrp).eq.0) then
+             i%nrlbl=Min(maxrp,i%nrlbl+1)
+             i%lbl100(i%nrlbl)=i%l100
+             i%lrp(i%nrrp)=i%nrlbl
+          end if
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.31) THEN ! reper zero level
           read(dat250(1:lend),*,err=201) i%zero
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.35) THEN ! put retper in output file
           I%LFLDAT(LINE) = .TRUE.
-       ELSEIF (LINE.EQ.39) THEN ! import form retper
+       ELSEIF (LINE.EQ.39) THEN ! import from retper
           i%nrimp=min(maximp,i%nrimp+1)
-          i%imp250(i%nrimp)=dat250
+          i%imp250(i%nrimp)=nukehead(dat250,250)
+          i%l100=dat250(1:100)
+          call chop0(i%l100,100)
+          ! Store label
+          i%limp(i%nrimp)=0
+          do ii=1,i%nrlbl
+             if (i%l100.eq.i%lbl100(ii)) then
+                i%limp(i%nrimp)=ii
+                exit ! the do loop
+             end if
+          end do
+          if (i%limp(i%nrimp).eq.0) then
+             i%nrlbl=min(maxrp,i%nrlbl+1)
+             i%lbl100(i%nrlbl)=i%l100
+             i%limp(i%nrimp)=i%nrlbl
+          end if
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.40) THEN ! wind speed from x, y
           i%nrspd=min(maxspd,i%nrspd+1)
@@ -558,9 +602,41 @@ contains
           i%lennet(i%nrret)=length(i%net250(i%nrret),250,10)
           i%lenret(i%nrret)=length(i%ret250(i%nrret),250,10)
           i%lenper(i%nrret)=length(i%per250(i%nrret),250,10)
+          i%l100=dat250(1:100)
+          call chop0(i%l100,100)
+          ! Store label
+          i%lret(i%nrret)=0
+          do ii=1,i%nrlbl
+             if (i%l100.eq.i%lbl100(ii)) then
+                i%lret(i%nrret)=ii
+                exit ! the do loop
+             end if
+          end do
+          if (i%lret(i%nrret).eq.0) then
+             i%nrlbl=min(maxrp,i%nrlbl+1)
+             i%lbl100(i%nrlbl)=i%l100
+             i%lret(i%nrret)=i%nrlbl
+          end if
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.80) THEN ! return period dim
-          i%rpd250=dat250
+          ! the dim is stored in the position of the label index...
+          buff250=nukehead(dat250,250)
+          i%l100=dat250(1:100)
+          call chop0(i%l100,100)
+          ! Store label
+          found=.false.
+          do ii=1,i%nrlbl
+             if (i%l100.eq.i%lbl100(ii)) then
+                found=.true.
+                i%rpd250(ii)=buff250
+                exit ! the do loop
+             end if
+          end do
+          if (.not.found) then
+             i%nrlbl=min(maxrp,i%nrlbl+1)
+             i%lbl100(i%nrlbl)=i%l100
+             i%rpd250(i%nrlbl)=buff250
+          end if
           I%LFLDAT(LINE) = .TRUE.
        ELSEIF (LINE.EQ.85) THEN ! ensemble dimension
           i%dim250=dat250
@@ -845,94 +921,108 @@ contains
     CHARACTER*14 MYNAME
     DATA MYNAME /'prepareRP'/
     ! 
-    integer :: lenp,II,lenfrom, lento
+    integer :: lenp,II,KK,lenfrom, lento
     integer YY,MM,DD,HH,MI,MM1,DD1,HH1,MI1,SS1,MM2,DD2,HH2,MI2,SS2
     real sec
     real :: ts2000,te2000
     character*250 :: cto250, cfrom250
     type(attribute), pointer :: ato=>null(), afrom=>null()
-    
-    if (i%lfldat(70).and.i%lfldat(30)) then
-       r%tnrrp=1 ! target return-period file...
-       do ii=1,i%nrrp
-          lenp=length(i%rp250(r%tnrrp),250,10)
-          write(*,*)myname,' Scanning: ',i%rp250(ii)(1:lenp)
-          call ncf_openFile(i%rp250(ii),r%ret,r%brp,irc)
+    allocate(r%ret(max(1,i%nrlbl)),stat=irc)
+    if(irc.ne.0) then
+       write(*,*)myname,' Unable to allocate RET.',irc
+       return
+    end if
+    do kk=1,i%nrlbl
+       nullify(r%ret(kk)%ptr)
+       if (i%lfldat(70).and.i%lfldat(30)) then
+          !
+          ! Loop over labels...
+          !
+          r%tnrrp(kk)=1 ! target return-period file...
+          do ii=1,i%nrrp
+             if (i%lrp(ii).ne.kk) cycle ! not correct label
+             lenp=length(i%rp250(ii),250,10)
+             write(*,*)myname,' Scanning: ',i%rp250(ii)(1:lenp)
+             call ncf_openFile(i%rp250(ii),r%ret(kk)%ptr,r%brp(kk),irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_openFile.',irc
+                return
+             end if
+             if (r%brp(kk)) then
+                call ncf_readInventory(r%ret(kk)%ptr,r%brp(kk),irc)
+                if (r%brp(kk)) then ! check if this is the correct file...
+                   ato => ncf_getGlobalAttribute(r%ret(kk)%ptr,"valid_to",irc)
+                   afrom => ncf_getGlobalAttribute(r%ret(kk)%ptr,"valid_from",irc)
+                   cto250=ncf_getAttributeText(ato)
+                   call chop0(cto250,250)
+                   lento=length(cto250,250,10)
+                   cfrom250=ncf_getAttributeText(afrom)
+                   call chop0(cfrom250,250)
+                   lenfrom=length(cfrom250,250,10)
+                   ! get current analysis date
+                   call dj2000(r%t2000,yy,mm,dd,hh,mi,sec)
+                   ! get start+end rp-date
+                   write(*,*)myname,'From:',cfrom250(1:lenfrom),&
+                        & ' to:',cto250(1:lento),' file:',i%rp250(ii)(1:lenp)
+                   read(cfrom250(1:lenfrom),'(I2,X,I2,X,I2,X,I2,X,I2)',iostat=irc)dd1,mm1,hh1,mi1,ss1
+                   sec=ss1
+                   call jd2000(ts2000,yy,mm1,dd1,hh1,mi1,sec)
+                   read(cto250(1:lento),'(I2,X,I2,X,I2,X,I2,X,I2)',iostat=irc)dd2,mm2,hh2,mi2,ss2
+                   sec=ss2+1.0D0
+                   call jd2000(te2000,yy,mm2,dd2,hh2,mi2,sec)
+                   ! check if analysis is in range
+                   if (ts2000 .lt. te2000) then
+                      if (r%t2000 .ge. ts2000 .and. r%t2000 .le. te2000) then
+                         write(*,'(2(X,A),X,I2.2,"/",I2.2,X,"<",I2.2,"/",I2.2,",",I2.2,"/",I2.2,">")')&
+                              & myname,'Found valid s-range:',dd,mm,dd1,mm1,dd2,mm2
+                         r%tnrrp(kk)=ii
+                      end if
+                   else
+                      if (.not.(r%t2000 .lt. ts2000 .and. r%t2000 .gt. te2000)) then
+                         write(*,'(2(X,A),X,I2.2,"/",I2.2,X,"<",I2.2,"/",I2.2,",",I2.2,"/",I2.2,">")')&
+                              & myname,'Found valid w-range:',dd,mm,dd1,mm1,dd2,mm2
+                         r%tnrrp(kk)=ii
+                      end if
+                   end if
+                end if
+             end if
+             call ncf_closeFile(r%ret(kk)%ptr,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_closeFile.',irc
+                return
+             end if
+             call ncf_clearInventory(r%ret(kk)%ptr,irc) ! delete internally stored data...
+             if (irc.ne.0) then
+                write(*,*) myname,"Error return from ncf_clearInventory.",irc
+                return
+             end if
+          end do
+          !
+          ! store best return period file and prefix
+          !
+          r%brp(kk)=.true.
+          lenp=length(i%rp250(r%tnrrp(kk)),250,10)
+          write(*,*)myname,' Scanning: ',i%rp250(r%tnrrp(kk))(1:lenp)
+          call ncf_openFile(i%rp250(r%tnrrp(kk)),r%ret(kk)%ptr,r%brp(kk),irc)
           if (irc.ne.0) then
              write(*,*)myname,' Error return from ncf_openFile.',irc
              return
           end if
-          if (r%brp) then
-             call ncf_readInventory(r%ret,r%brp,irc)
-             if (r%brp) then ! check if this is the correct file...
-                ato => ncf_getGlobalAttribute(r%ret,"valid_to",irc)
-                afrom => ncf_getGlobalAttribute(r%ret,"valid_from",irc)
-                cto250=ncf_getAttributeText(ato)
-                call chop0(cto250,250)
-                lento=length(cto250,250,10)
-                cfrom250=ncf_getAttributeText(afrom)
-                call chop0(cfrom250,250)
-                lenfrom=length(cfrom250,250,10)
-                ! get current analysis date
-                call dj2000(r%t2000,yy,mm,dd,hh,mi,sec)
-                ! get start+end rp-date
-                write(*,*)myname,'From:',cfrom250(1:lenfrom),&
-                     & ' to:',cto250(1:lento),' file:',i%rp250(ii)(1:lenp)
-                read(cfrom250(1:lenfrom),'(I2,X,I2,X,I2,X,I2,X,I2)',iostat=irc)dd1,mm1,hh1,mi1,ss1
-                sec=ss1
-                call jd2000(ts2000,yy,mm1,dd1,hh1,mi1,sec)
-                read(cto250(1:lento),'(I2,X,I2,X,I2,X,I2,X,I2)',iostat=irc)dd2,mm2,hh2,mi2,ss2
-                sec=ss2+1.0D0
-                call jd2000(te2000,yy,mm2,dd2,hh2,mi2,sec)
-                ! check if analysis is in range
-                if (ts2000 .lt. te2000) then
-                   if (r%t2000 .ge. ts2000 .and. r%t2000 .le. te2000) then
-                      write(*,'(2(X,A),X,I2.2,"/",I2.2,X,"<",I2.2,"/",I2.2,",",I2.2,"/",I2.2,">")')&
-                           & myname,'Found valid s-range:',dd,mm,dd1,mm1,dd2,mm2
-                      r%tnrrp=ii
-                   end if
-                else
-                   if (.not.(r%t2000 .lt. ts2000 .and. r%t2000 .gt. te2000)) then
-                      write(*,'(2(X,A),X,I2.2,"/",I2.2,X,"<",I2.2,"/",I2.2,",",I2.2,"/",I2.2,">")')&
-                           & myname,'Found valid w-range:',dd,mm,dd1,mm1,dd2,mm2
-                      r%tnrrp=ii
-                   end if
-                end if
+          if (r%brp(kk)) then
+             call ncf_readInventory(r%ret(kk)%ptr,r%brp(kk),irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_readInventory.',irc
+                return
              end if
-          end if
-          call ncf_closeFile(r%ret,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_closeFile.',irc
-             return
-          end if
-          call ncf_clearInventory(r%ret,irc) ! delete internally stored data...
-          if (irc.ne.0) then
-             write(*,*) myname,"Error return from ncf_clearInventory.",irc
-             return
-          end if
-       end do
-       r%brp=.true.
-       lenp=length(i%rp250(r%tnrrp),250,10)
-       write(*,*)myname,' Scanning: ',i%rp250(r%tnrrp)(1:lenp)
-       call ncf_openFile(i%rp250(r%tnrrp),r%ret,r%brp,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_openFile.',irc
-          return
-       end if
-       if (r%brp) then
-          call ncf_readInventory(r%ret,r%brp,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_readInventory.',irc
+          else
+             irc=845
+             write(*,*)myname,' Corrupt file: ',i%rp250(r%tnrrp(kk))(1:lenp)
              return
           end if
        else
-          irc=845
-          write(*,*)myname,' Corrupt file: ',i%rp250(r%tnrrp)(1:lenp)
-          return
+          r%brp(kk)=.false. ! no return period information...
        end if
-    else
-       r%brp=.false. ! no return period information...
-    end if
+    end do
 
   end subroutine prepareRP
   !
@@ -1068,8 +1158,8 @@ contains
           write(*,*)myname,' Creating: ',i%spd250(ss)(1:lens)
           call ncf_setVariableName(o,i%spd250(ss))
           call ncf_setTextAttribute(o,"standard_name",i%spd250(ss)(1:lens))
-          if(bdeb)write(*,*)myname,"### Prepending A:'"//o%var250(1:o%lenv)//"'",o%lend
-          call ncf_prependVariable(out,o)
+          if(bdeb)write(*,*)myname,"### Adding A:'"//o%var250(1:o%lenv)//"'",o%lend
+          call ncf_appendVariable(out,o)
        end if
        call ncf_initField(o,o%filld,irc)
        if (irc.ne.0) then
@@ -1203,8 +1293,8 @@ contains
        write(*,*)myname,' Size:',o%var250(1:o%lenv),o%lend
     end if
     !
-    if(bdeb)write(*,*)myname,"### Prepending B:'"//o%var250(1:o%lenv)//"'",o%lend
-    call ncf_prependVariable(out,o)
+    if(bdeb)write(*,*)myname,"### Adding B:'"//o%var250(1:o%lenv)//"'",o%lend
+    call ncf_appendVariable(out,o)
     nullify(o)
     if (bdeb) then
        call ncf_checkInventory(out,irc)
@@ -1300,8 +1390,8 @@ contains
              call ncf_setTextAttribute(o,"standard_name",i%niff250(ihrs)(1:i%lenniff(ihrs)))
              !
              ! add output variable
-             if(bdeb)write(*,*)myname,"### Prepending C:'"//o%var250(1:o%lenv)//"'",o%lend
-             call ncf_prependVariable(out,o)
+             if(bdeb)write(*,*)myname,"### Adding C:'"//o%var250(1:o%lenv)//"'",o%lend
+             call ncf_appendVariable(out,o)
           end if
           !
           call ncf_importVariable(inp,o,irc)
@@ -1414,8 +1504,8 @@ contains
     integer :: nretper=0
     real, allocatable :: aretper(:)
     integer, allocatable :: aretind(:),aretmax(:),aretmin(:)
-    integer :: dbg, ii,jj,left,right
-    type(weight), pointer :: wgt => null()   ! weight of surrounding grid points
+    integer :: dbg, ii,jj,kk,left,right
+    type(weight), pointer :: wgt => null() ! weight of surrounding grid points
     !
     integer :: ivar,lz,lr,li,lo
     logical :: brok, biok, binp, maxevent,increasing !
@@ -1430,327 +1520,837 @@ contains
     real :: valid_min,valid_max,lat,lon
     logical :: bbrp
     character*250 :: unit250
-    integer :: lenu=0,lenr, iz,lenii, lenp
+    integer :: lenu=0,lenr, lenl,iz,lenii, leni, lenp
     type(dimension), pointer :: rx=>null() ! return level x-dimension
     type(dimension), pointer :: ry=>null() ! return level y-dimension
     type(dimensionOrder), pointer  ::  rdo=>null(),zdo=>null(),xydo=>null()
     logical :: boz,bozz,found
-    !
+    !     
     dbg=0
-    !
-    ! open return period file and read inventory
-    !
-    if (r%brp) then
-       bbrp=r%brp
-       lenr=length(i%rpd250,250,10)
-       call ncf_checkParid(r%ret,i%rpd250,bbrp,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_checkContents.',irc
-          return
-       end if
+    !     
+    !     Loop over return period files
+    !     
+    do kk=1,i%nrlbl
        !
-       ! read latitude and longitude into memory
+       ! open return period file and read inventory
        !
-       call ncf_readRealData(r%ret%lonid,r%bop,irc)
-       if (.not.r%bop) irc=999
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_readRealData J.',irc
-          return
-       end if
-       call ncf_readRealData(r%ret%latid,r%bop,irc)
-       if (.not.r%bop) irc=999
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_readRealData K.',irc
-          return
-       end if
-       ! read return-period variable into memory
-       call ncf_readRealData(r%ret%parid,bbrp,irc)
-       if (.not.bbrp) irc=999
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_readRealData I.',irc,v%lend,&
-               & " par='"//i%rpd250(1:lenr)//"'"
-          return
-       end if
-       write(*,'(X,A,A,100(X,F0.3))')myname,'Return periods ('//i%rpd250(1:lenr)//'):',r%ret%parid%fd
-       unit250 = ncf_getTextAttribute(r%ret%parid,"units",irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_getAttribute.',irc
-          return
-       end if
-       call chop0(unit250,250)
-       lenu=length(unit250,250,10)
-       if(bdeb)write(*,*)myname,' Found return-parameter unit:',unit250(1:lenu)
-       ! read import variables into memory...
-       if (.not. associated(impVariable)) then
-          allocate(impVariable(maximp),stat=irc)
-       end if
-       ! read import variables into memory...
-       do ii=1,i%nrimp
-          r%bok=.true.
-          lenii=length(i%imp250(ii),250,10)
-          impVariable(ii)%ptr=>ncf_getVariable(r%ret,i%imp250(ii)(1:lenii),r%bok,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_getVariable.',irc
+       if (r%brp(kk)) then
+          bbrp=r%brp(kk)
+          lenr=length(i%rpd250(kk),250,10)
+          if (lenr.eq.0) then
+             lenl=length(i%lbl100(kk),100,1)
+             write(*,*)myname," Undefined return dimension for label '",&
+                  & i%lbl100(kk)(1:lenl),"'",irc
+             irc=274
              return
           end if
-          if (associated(impVariable(ii)%ptr)) then
-             if (.not. impVariable(ii)%ptr%readyfield) then
-                call ncf_readRealData(impVariable(ii)%ptr,r%bok,irc)
-                if (.not.r%bok) irc=999
+          call ncf_checkParid(r%ret(kk)%ptr,i%rpd250(kk),bbrp,irc)
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_checkContents.',irc
+             return
+          end if
+          !
+          ! read latitude and longitude into memory
+          !
+          call ncf_readRealData(r%ret(kk)%ptr%lonid,r%bop,irc)
+          if (.not.r%bop) irc=999
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_readRealData J.',irc
+             return
+          end if
+          call ncf_readRealData(r%ret(kk)%ptr%latid,r%bop,irc)
+          if (.not.r%bop) irc=999
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_readRealData K.',irc
+             return
+          end if
+          ! read return-period variable into memory
+          call ncf_readRealData(r%ret(kk)%ptr%parid,bbrp,irc)
+          if (.not.bbrp) irc=999
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_readRealData I.',irc,v%lend,&
+                  & " par='"//i%rpd250(kk)(1:lenr)//"'"
+             return
+          end if
+          write(*,'(X,A,A,100(X,F0.3))')myname,'Return periods ('//i%rpd250(kk)(1:lenr)//'):',r%ret(kk)%ptr%parid%fd
+          unit250 = ncf_getTextAttribute(r%ret(kk)%ptr%parid,"units",irc)
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_getAttribute.',irc
+             return
+          end if
+          call chop0(unit250,250)
+          lenu=length(unit250,250,10)
+          if(bdeb)write(*,*)myname,' Found return-parameter unit:',unit250(1:lenu)
+          ! read import variables into memory...
+          if (.not. associated(impVariable)) then
+             allocate(impVariable(maximp),stat=irc)
+          end if
+          ! read import variables into memory...
+          do ii=1,i%nrimp
+             if (i%limp(ii).ne.kk) cycle ! different label
+             r%bok=.true.
+             lenii=length(i%imp250(ii),250,10)
+             impVariable(ii)%ptr=>ncf_getVariable(r%ret(kk)%ptr,i%imp250(ii)(1:lenii),r%bok,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_getVariable.',irc
+                return
+             end if
+             if (associated(impVariable(ii)%ptr)) then
+                if (.not. impVariable(ii)%ptr%readyfield) then
+                   call ncf_readRealData(impVariable(ii)%ptr,r%bok,irc)
+                   if (.not.r%bok) irc=999
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_readRealData KI.',irc
+                      return
+                   end if
+                   write(*,*)myname," Importing: "//i%imp250(ii)(1:lenii),impVariable(ii)%ptr%lend
+                else
+                   write(*,*)myname," Already imported: "//i%imp250(ii)(1:lenii)
+                end if
+             else
+                write(*,*)myname," Import not found: "//i%imp250(ii)(1:lenii)
+                irc=845
+                return
+             end if
+          end do
+       end if
+       !
+       call ncf_clearDimOrder(xydo)
+       if (bbrp) then
+          ! x,y dimensions
+          xydo => ncf_getPrimaryDimOrder(r%ret(kk)%ptr,irc)
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_getPrimaryDimensions L.',irc
+             return
+          end if
+          rx=>ncf_getDimensionOrderDimension(xydo,1)
+          ry=>ncf_getDimensionOrderDimension(xydo,2)
+          if (bdeb) then
+             write(*,*)myname,'Return period xy-dimorder:'
+             call ncf_printDimOrder(xydo)
+          end if
+          if (bdeb) then
+             call ncf_printDimension(r%ret(kk)%ptr,rx)
+             call ncf_printDimension(r%ret(kk)%ptr,ry)
+          end if
+       else
+          irc=341
+          WRITE(*,*) MYNAME," Missing XY-navigation in RetPer."
+          RETURN
+       end if
+       !
+       ! import variables....
+       !
+       if (r%brp(kk)) then
+          ! make import variables in output file...
+          do ii=1,i%nrimp
+             if (i%limp(ii).ne.kk) cycle ! different label
+             ! check if variable already exists
+             r%bok=.false.      ! we dont expect to find this variable (silent)
+             ri => impVariable(ii)%ptr;
+             lenii=length(i%imp250(ii),250,10)
+             zi => ncf_getVariable(out,i%imp250(ii)(1:lenii),r%bok,irc)
+             if (r%bok) then
+                write(*,*)myname," Variable exists '"//i%imp250(ii)(1:lenii)//"'"
+             else
+                write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'"
+             end if
+             !
+             ! make import-variable in output file...
+             !
+             if (.not.r%bok) then ! make import variable
+                !write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'",&
+                !     & ii,associated(impVariable(ii)%ptr)
+                zi => ncf_copyVariable(ri,irc)
                 if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_readRealData KI.',irc
+                   write(*,*)myname,' Error return from ncf_copyVariable.',irc
                    return
                 end if
-                write(*,*)myname," Importing: "//i%imp250(ii)(1:lenii),impVariable(ii)%ptr%lend
-             else
-                write(*,*)myname," Already imported: "//i%imp250(ii)(1:lenii)
+                call ncf_clearDimOrder(zdo)
+                zdo=>ncf_newDimOrder(inp,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_newDimOrder.',irc
+                   return
+                end if
+                call ncf_addDimOrder(zdo,r%ixydo,irc) ! only position dims...
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_addDimOrder.',irc
+                   return
+                end if
+                call ncf_importDimOrder(out,zdo,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_importdimorder.',irc
+                   return
+                end if
+                call ncf_setVariableDimOrder(zi,zdo,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_setVariableDimOrder.',irc
+                   return
+                end if
+                if(bdeb)write(*,*)myname,"### Adding D:'"//zi%var250(1:zi%lenv)//"'",zi%lend
+                call ncf_appendVariable(out,zi)
              end if
-          else
-             write(*,*)myname," Import not found: "//i%imp250(ii)(1:lenii)
-             irc=845
+             !
+             ! make sure positions are the same...
+             call ncf_importVariable(inp,zi,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,&
+                     & ' Error return from ncf_importvariable.',irc
+                return
+             end if
+             !
+             ! initialise field to "undefined"
+             call ncf_initField(zi,zi%filld,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,&
+                     & ' Error return from ncf_initField.',irc
+                return
+             end if
+             !
+             ! get lat/lon dimensions
+             !
+             ! copy import variable to output file...
+             !
+             wgt => ncf_makeWeight4(r%ret(kk)%ptr%nrdim,irc)
+             ! loop over output-grid
+             call ncf_resetPos(r%ixydo,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,'Error return from ncf_resetPos.',irc
+                return
+             end if
+             LLIMP: do while (ncf_increment(inp,r%ixydo,irc))
+                ! interpolate...
+                biok=.true.
+                call ncf_interpolate2D(inp,r%ret(kk)%ptr,rx,ry,wgt,biok,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,'Error return from interpolate2d.',irc
+                   return
+                end if
+                ! assign...
+                if (biok) then
+                   lz = ncf_getLocation(zi) ! location in input array
+                   lr = ncf_getLocation(ri) ! location in input array
+                   zi%fd(lz)=ncf_valueWeighted(ri,wgt,irc)
+                   !if (0 .eq. mod(lz,1000)) write(*,*)myname,'Lz:',lz,zi%fd(lz),&
+                   !     & lr,r%fd(lr)
+                end if
+             end do LLIMP
+             !call ncf_printVariable(zi)
+             call ncf_importVariable(out,zi,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,&
+                     & ' Error return from ncf_importvariable.',irc
+                return
+             end if
+             call ncf_clearWeight(wgt)
+             call ncf_clearDimOrder(zdo)
+             nullify(zi)
+             !end if ! import variable
+          end do                   ! nrimp
+       end if
+       !
+       ! make return period variables...
+       !
+       if (r%brp(kk)) then
+          lenp=length(i%rp250(r%tnrrp(kk)),250,10)
+          write(*,*)myname,' processing: ',i%rp250(r%tnrrp(kk))(1:lenp),r%brp(kk)
+          ook(1)=0
+          ook(2)=0
+          orm(1)=0
+          orm(2)=0
+          wgt => ncf_makeWeight4(r%ret(kk)%ptr%nrdim,irc)
+          if (irc.ne.0) then
+             write(*,*)myname,'Error return from ncf_makeWeight4.',irc
              return
           end if
-       end do
-    end if
-    !
-    call ncf_clearDimOrder(xydo)
-    if (bbrp) then
-       ! x,y dimensions
-       xydo => ncf_getPrimaryDimOrder(r%ret,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_getPrimaryDimensions L.',irc
-          return
-       end if
-       rx=>ncf_getDimensionOrderDimension(xydo,1)
-       ry=>ncf_getDimensionOrderDimension(xydo,2)
-       if (bdeb) then
-          write(*,*)myname,'Return period xy-dimorder:'
-          call ncf_printDimOrder(xydo)
-       end if
-       if (bdeb) then
-          call ncf_printDimension(r%ret,rx)
-          call ncf_printDimension(r%ret,ry)
-       end if
-    else
-       irc=341
-       WRITE(*,*) MYNAME," Missing XY-navigation in RetPer."
-       RETURN
-    end if
-    !
-    ! import variables....
-    !
-    if (r%brp) then
-       ! make import variables in output file...
-       do ii=1,i%nrimp
-          ! check if variable already exists
-          r%bok=.false. ! we dont expect to find this variable (silent)
-          ri => impVariable(ii)%ptr;
-          lenii=length(i%imp250(ii),250,10)
-          zi => ncf_getVariable(out,i%imp250(ii)(1:lenii),r%bok,irc)
-          if (r%bok) then
-             write(*,*)myname," Variable exists '"//i%imp250(ii)(1:lenii)//"'"
-          else
-             write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'"
+          !
+          ! make dimorder for retper
+          rdo=>ncf_makeDimOrder(r%ret(kk)%ptr%parid,irc)
+          nretper=ncf_getDimOrderLength(rdo) ! number of return periods
+          nn=nretper             ! actual number of return periods
+          increasing=(r%ret(kk)%ptr%parid%fd(1).le.r%ret(kk)%ptr%parid%fd(nretper))
+          !we assume that the return periods are sorted...
+          if (allocated(aretper)) deallocate(aretper)
+          if (allocated(aretind)) deallocate(aretind)
+          if (allocated(aretmax)) deallocate(aretmax)
+          if (allocated(aretmin)) deallocate(aretmin)
+          allocate(aretper(nretper),aretind(nretper),aretmax(nretper),&
+               & aretmin(nretper),stat=irc)
+          if(irc.ne.0) then
+             write(*,*)myname,' Unable to allocate ARETPER.',irc
+             return
           end if
+          ! The return_levels can be for either "minimum events" or "maximum events"
+          ! If the return_level increases with increasing return_period, it is a "maximum event"...
+          do ii=1,nn
+             aretind(ii)=ii      ! return_period index
+          end do
+          call sort_heapsort1r(nretper,r%ret(kk)%ptr%parid%fd,eps,newnn,nn,aretind,uniq)
+          do ii=1,newnn          ! index to valid return periods
+             aretmax(ii)=aretind(ii) ! maxevent index
+             aretmin(ii)=aretind(newnn-ii+1) ! minevent index
+          end do
           !
-          ! make import-variable in output file...
-          !
-          if (.not.r%bok) then ! make import variable
-             !write(*,*)myname," Interpolating '"//i%imp250(ii)(1:lenii)//"'",&
-             !     & ii,associated(impVariable(ii)%ptr)
-             zi => ncf_copyVariable(ri,irc)
+          ! add return-period variable to output file
+          if (i%lfldat(35)) then ! create return-level variable
+             ! check if return-level variable already exists
+             r%bok=.false.       ! we dont expect to find this variable (silent)
+             zi => ncf_getVariable(inp,i%rpd250(kk)(1:lenr),r%bok,irc)
+             if (r%bok) then
+                write(*,*)myname," Variable exists '"//i%rpd250(kk)(1:lenr)//"'"
+             else
+                write(*,*)myname," Interpolating '"//i%rpd250(kk)(1:lenr)//"'"
+             end if
+             bozz=(.not.r%bok)   ! should we make return-level variable?
+          else
+             bozz=.false.
+          end if
+          if (bozz) then         ! make return-level variable
+             !write(*,*)myname," Interpolating '"//i%rpd250(kk)(1:lenr)//"'"
+             zi =>ncf_copyVariable(r%ret(kk)%ptr%parid,irc)
              if (irc.ne.0) then
                 write(*,*)myname,' Error return from ncf_copyVariable.',irc
                 return
              end if
-             call ncf_clearDimOrder(zdo)
+             call ncf_copyVariableField(zi,r%ret(kk)%ptr%parid,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_copyVariableField.',irc
+                return
+             end if
+             !
+             ! make return-period dimension
+             r%ro=>ncf_createDimension(out,i%rpd250(kk)(1:lenr),nretper)
+             r%rz=>ncf_createDimension(inp,i%rpd250(kk)(1:lenr),nretper)
+             iz=ncf_getDimEntry(inp,i%rpd250(kk)(1:lenr))
+             write(*,*)myname,"Created dimension '"//i%rpd250(kk)(1:lenr)//"'",r%rz%ind
+             !
+             call ncf_clearDimOrder(zdo) ! remove all dimensions in zdo
+             ! add return-period dimension (r%rz)
              zdo=>ncf_newDimOrder(inp,irc)
              if (irc.ne.0) then
                 write(*,*)myname,' Error return from ncf_newDimOrder.',irc
                 return
              end if
-             call ncf_addDimOrder(zdo,r%ixydo,irc) ! only position dims...
+             call ncf_addDimOrderEntry(zdo,iz,irc)
              if (irc.ne.0) then
-                write(*,*)myname,' Error return from ncf_addDimOrder.',irc
-                return
-             end if
-             call ncf_importDimOrder(out,zdo,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_importdimorder.',irc
+                write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
                 return
              end if
              call ncf_setVariableDimOrder(zi,zdo,irc)
              if (irc.ne.0) then
-                write(*,*)myname,' Error return from ncf_setVariableDimOrder.',irc
+                write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
                 return
              end if
-             if(bdeb)write(*,*)myname,"### Prepending D:'"//zi%var250(1:zi%lenv)//"'",zi%lend
-             call ncf_prependVariable(out,zi)
-          end if
-          !
-          ! make sure positions are the same...
-          call ncf_importVariable(inp,zi,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,&
-                  & ' Error return from ncf_importvariable.',irc
-             return
-          end if
-          !
-          ! initialise field to "undefined"
-          call ncf_initField(zi,zi%filld,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,&
-                  & ' Error return from ncf_initField.',irc
-             return
-          end if
-          !
-          ! get lat/lon dimensions
-          !
-          ! copy import variable to output file...
-          !
-          wgt => ncf_makeWeight4(r%ret%nrdim,irc)
-          ! loop over output-grid
-          call ncf_resetPos(r%ixydo,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,'Error return from ncf_resetPos.',irc
-             return
-          end if
-          LLIMP: do while (ncf_increment(inp,r%ixydo,irc))
-             ! interpolate...
-             biok=.true.
-             call ncf_interpolate2D(inp,r%ret,rx,ry,wgt,biok,irc)
+             call ncf_importVariable(out,zi,irc)
              if (irc.ne.0) then
-                write(*,*)myname,'Error return from interpolate2d.',irc
+                write(*,*)myname,&
+                     & ' Error return from ncf_importvariable.',irc
                 return
              end if
-             ! assign...
-             if (biok) then
-                lz = ncf_getLocation(zi) ! location in input array
-                lr = ncf_getLocation(ri) ! location in input array
-                zi%fd(lz)=ncf_valueWeighted(ri,wgt,irc)
-                !if (0 .eq. mod(lz,1000)) write(*,*)myname,'Lz:',lz,zi%fd(lz),&
-                !     & lr,r%fd(lr)
+             !
+             if(bdeb)write(*,*)myname,"### Adding E:'"//zi%var250(1:zi%lenv)//"'",zi%lend
+             call ncf_prependVariable(inp,zi)
+             nullify(zi)
+             call ncf_clearDimOrder(zdo)
+             ! at this point the return-level dimension RZ is defined...
+          end if
+          if (bdeb) then
+             call ncf_checkInventory(inp,irc)
+             if (irc.ne.0) then
+                write(*,*)myname,' Error return from ncf_checkInventory B.',irc
+                return
              end if
-          end do LLIMP
-          !call ncf_printVariable(zi)
-          call ncf_importVariable(out,zi,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,&
-                  & ' Error return from ncf_importvariable.',irc
-             return
           end if
+          ! loop over output return variables
+          if(bdeb)write(*,*)myname,' Return periods: ',i%nrret
+          LREPER: do ivar=1,i%nrret
+             if (i%lret(ivar).ne.kk) cycle
+             first=.true.
+             if(bdeb)WRITE(*,*) MYNAME," Creating return-period: '"//i%net250(ivar)(1:i%lennet(ivar))//"'"
+             ! initialise return period...
+             brok=.true.
+             rp => ncf_getVariable(r%ret(kk)%ptr,i%per250(ivar)(1:i%lenper(ivar)),brok,irc)
+             IF (IRC.NE.0) THEN
+                WRITE(*,*) MYNAME,' Error return from ncf_getVariable.',IRC
+                RETURN
+             END IF
+             if (.not.brok) then
+                irc=345 
+                lenl=length(i%lbl100(kk),100,1)
+                WRITE(*,*) MYNAME," Missing return variable for label '",&
+                     & i%lbl100(kk)(1:kk),"' ("//i%per250(ivar)(1:i%lenper(ivar))//")"
+                RETURN
+             end if
+             if (.not.rp%readyfield) then ! read data into memory if not already there
+                call ncf_readRealData(rp,brok,irc)
+                if (.not.brok) irc=999
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_readRealData L.',irc,v%lend
+                   return
+                end if
+             end if
+             call ncf_clearDimOrder(xydo)
+             if (brok) then
+                ! x,y dimensions
+                xydo => ncf_getPrimaryDimOrder(r%ret(kk)%ptr,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_getPrimaryDimensions L.',irc
+                   return
+                end if
+                rx=>ncf_getDimensionOrderDimension(xydo,1)
+                ry=>ncf_getDimensionOrderDimension(xydo,2)
+                if (bdeb) then
+                   write(*,*)myname,'Return period xy-dimorder:'
+                   call ncf_printDimOrder(xydo)
+                end if
+                if (bdeb) then
+                   call ncf_printDimension(r%ret(kk)%ptr,rx)
+                   call ncf_printDimension(r%ret(kk)%ptr,ry)
+                end if
+             else
+                irc=345
+                WRITE(*,*) MYNAME," Unable to read variable: '"//i%per250(ivar)(1:i%lenper(ivar))//"'"
+                RETURN
+             end if
+             !
+             found=.false.
+             v => ncf_getVariable(inp,i%ret250(ivar)(1:i%lenret(ivar)),binp,irc)
+             if (irc.ne.0) then
+                binp=.false.
+             end if
+             if (.not.binp) then
+                v => ncf_getVariable(out,i%ret250(ivar)(1:i%lenret(ivar)),r%bok,irc)
+                ! make sure positions are the same...
+                call ncf_importVariable(inp,v,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_importvariable.',irc
+                   return
+                end if
+                if (.not.r%bok) irc=701
+                if (irc.ne.0) then
+                   write(*,*)myname,' Error return from ncf_getVariable...',&
+                        & irc,i%ret250(ivar)(1:i%lenret(ivar))
+                   return
+                end if
+             else
+                r%bok=.true.
+             end if
+             if (associated(v)) then
+                !n => inp%firstVariable%next
+                !LRET: do while (.not.associated(n,target=inp%lastVariable))
+                !   v => n
+                !   n => n%next
+                !   if (.not.i%ret250(ivar)(1:i%lenret(ivar)).eq.v%var250(1:v%lenv)) cycle LRET ! not target variable
+                !   if (.not.ncf_variableContainsDim(v,itime)) cycle LRET ! no time dimension
+                !
+                found=.true.
+                if(bdeb)write(*,*) myname,' Return-variable: ',v%var250(1:v%lenv),v%lend
+                if (.not.v%readyfield) then ! read data into memory if not already there
+                   brok=.true.      ! always true...
+                   call ncf_readRealData(v,brok,irc)
+                   if (.not.brok) irc=999
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_readRealData M.',irc,v%lend
+                      return
+                   end if
+                end if
+                !
+                call ncf_clearDimOrder(ido)
+                ido=>ncf_makeDimOrder(v,irc)
+                call ncf_setInventoryDimOrder(inp,ido,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,'Error return from setInventoryDimOrder.',irc
+                   return
+                end if
+                ! remove coordinate dimensions from variable dim-order
+                call ncf_removeDimOrder(ido,r%ixydo)
+                !
+                ! get any old variable that has the same name as output variable...
+                !
+                r%bok=.false.       ! we dont expect to find this variable (silent)
+                !
+                ! create differentiated output variable
+                !
+                o => ncf_getVariable(out,i%net250(ivar)(1:i%lennet(ivar)),r%bok,irc)
+                if (.not.r%bok) then
+                   o => ncf_copyVariable(v,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_copyVariable.',irc
+                      return
+                   end if
+                   ! set correct unit
+                   !write(*,*)myname," Setting unit '"//unit250(1:lenu)//"'"
+                   call ncf_setTextAttribute(o,"units",unit250(1:lenu))
+                   ! set variable name
+                   call ncf_setVariableName(o,i%net250(ivar))
+                   call ncf_setTextAttribute(o,"standard_name",i%net250(ivar)(1:i%lennet(ivar)))
+                   if(bdeb)write(*,*)myname,"### Adding F:'"//o%var250(1:o%lenv)//"'",o%lend
+                   call ncf_appendVariable(out,o)
+                end if
+                ! initialise field to "undefined"
+                call ncf_initField(o,o%filld,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_initField.',irc
+                   return
+                end if
+                ! make sure positions are the same...
+                call ncf_importVariable(inp,o,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_importvariable.',irc
+                   return
+                end if
+                !
+                ! create return-level variable
+                !
+                if (bozz) then      ! create return-level variable
+                   ! check if return-level variable already exists
+                   r%bok=.false.    ! we dont expect to find this variable (silent)
+                   zi => ncf_getVariable(out,i%per250(ivar)(1:i%lenper(ivar)),r%bok,irc)
+                   boz=(.not.r%bok) ! should we make return-level variable?
+                else
+                   boz=.false.
+                end if
+                if (boz) then       ! make return-level variable
+                   if(bdeb)write(*,*)myname," Interpolating '"//i%per250(ivar)(1:i%lenper(ivar))//"'"
+                   zi =>ncf_copyVariable(rp,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_copyVariable.',irc
+                      return
+                   end if
+                   call ncf_copyVariableAttribute(zi,v,"grid_mapping",irc)
+                   call ncf_copyVariableAttribute(zi,v,"coordinates",irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_copyVariableAttribute.',irc
+                      return
+                   end if
+                   !
+                   call ncf_clearDimOrder(zdo)
+                   zdo=>ncf_copyDimOrder(r%ixydo,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_copyOrderDim.',irc
+                      return
+                   end if
+                   ! add return-period dimension (r%rz)
+                   call ncf_addDimOrderEntry(zdo,iz,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
+                      return
+                   end if
+                   call ncf_setVariableDimOrder(zi,zdo,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
+                      return
+                   end if
+                   if(bdeb)write(*,*)myname,"### Adding G:'"//&
+                        & zi%var250(1:zi%lenv)//"'",zi%lend
+                   call ncf_appendVariable(out,zi)
+                   ! initialise field to "undefined"
+                   call ncf_initField(zi,zi%filld,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,&
+                           & ' Error return from ncf_initField.',irc
+                      return
+                   end if
+                   ! call ncf_printVariable(zi)
+                   ! make sure we use inp-positions
+                   call ncf_importVariable(inp,zi,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,&
+                           & ' Error return from ncf_importvariable.',irc
+                      return
+                   end if
+                end if
+                !
+                valid_first=.true.
+                valid_max=o%filld
+                valid_min=o%filld
+                !write(*,*)myname,'Ret pos: '
+                if (bdeb) then
+                   call ncf_firstDimension(r%ret(kk)%ptr,rx)
+                   call ncf_firstDimension(r%ret(kk)%ptr,ry)
+                   call ncf_printPos(r%ret(kk)%ptr%pos)
+                   ! print corners...
+                   li = ncf_getLocation(r%ret(kk)%ptr%lonid)
+                   lon=r%ret(kk)%ptr%lonid%fd(li)
+                   li = ncf_getLocation(r%ret(kk)%ptr%latid)
+                   lat=r%ret(kk)%ptr%latid%fd(li)
+                   write(*,*)myname,'Corner (1,1):',lon,lat
+                   call ncf_lastDimension(r%ret(kk)%ptr,rx)
+                   call ncf_lastDimension(r%ret(kk)%ptr,ry)
+                   call ncf_printPos(r%ret(kk)%ptr%pos)
+                   ! print corners...
+                   li = ncf_getLocation(r%ret(kk)%ptr%lonid)
+                   lon=r%ret(kk)%ptr%lonid%fd(li)
+                   li = ncf_getLocation(r%ret(kk)%ptr%latid)
+                   lat=r%ret(kk)%ptr%latid%fd(li)
+                   write(*,*)myname,'Corner (+,+):',lon,lat
+                   call ncf_printDimOrder(r%ixydo)
+                   ! loop over coordinates dimension-order
+                   call ncf_firstDimension(r%ret(kk)%ptr,rx)
+                   call ncf_firstDimension(r%ret(kk)%ptr,ry)
+                end if
+                call ncf_resetPos(r%ixydo,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,'Error return from ncf_resetPos.',irc
+                   return
+                end if
+                LLGRID: do while (ncf_increment(inp,r%ixydo,irc))
+                   call ncf_resetPos(ido,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,'Error return from ncf_resetPos.',irc
+                      return
+                   end if
+                   ! interpolate positions...
+                   dbg=dbg+1
+                   biok=.true.
+                   !write(*,*)myname," Interpolating."
+                   !dbt=949*381+481
+                   ncf_bdeb=.false.    ! (dbg.eq.dbt)
+                   call ncf_interpolate2D(inp,r%ret(kk)%ptr,rx,ry,wgt,biok,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,'Error return from interpolate2d.',irc
+                      return
+                   end if
+                   if (ncf_bdeb) then
+                      write(*,*)myname," ========Input pos."
+                      call ncf_printPos(inp%pos)
+                      write(*,*)myname," ========Ret pos."
+                      call ncf_printPos(r%ret(kk)%ptr%pos)
+                      write(*,*)myname," ========Get Retper.",biok
+                      !if (dbg.eq.dbt) return
+                   end if
+
+                   call ncf_resetPos(rdo,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,'Error return from ncf_resetPos.',irc
+                      return
+                   end if
+                   if (biok) then
+                      jj=0
+                      LRETPER: do while (ncf_increment(r%ret(kk)%ptr,rdo,irc))
+                         jj=jj+1
+                         !call ncf_printPos(rp%f%pos)
+                         !call ncf_printWeight(wgt)
+                         aretper(jj)=ncf_valueWeighted(rp,wgt,irc)
+                         if (aretper(jj).eq.rp%filld) then
+                            biok=.false.  ! undefined return_levels detected
+                            exit LRETPER
+                         end if
+                         if (boz) then    ! set return-period variable
+                            call ncf_setDimensionValue(inp,r%rz,jj) ! forecast time in input-file
+                            lz = ncf_getLocation(zi) ! location in input array
+                            zi%fd(lz)=aretper(jj)
+                            if (ncf_bdeb) then
+                               write(*,*)'Retper:',jj,lz,zi%fd(lz)
+                            end if
+                         end if
+                      end do LRETPER
+                   end if
+                   !write(*,*)myname," Sub loop.",biok
+                   if (biok) then
+                      ! loop over other dimensions...
+                      LRGRID: do while (ncf_increment(inp,ido,irc))
+                         if (bdeb)then
+                            write(*,*)myname,'Grid loop...',biok
+                            call ncf_printPos(inp%pos)
+                            call ncf_printDimOrder(ido)
+                         end if
+                         !
+                         ! loop over return-period dimension
+                         !
+                         left=-1
+                         right=-1
+                         li = ncf_getLocation(v)
+                         lo = ncf_getLocation(o)
+                         biok=(v%fd(li).ne.v%filld)
+                         if (biok) then
+                            if (jj.ne.nretper) then
+                               irc=956
+                               write(*,*)myname,'Invalid NRETPER:',jj,nretper
+                               return
+                            end if
+                            if (jj.gt.1) then
+                               maxevent=(aretper(1).le.aretper(nretper))
+                            else if (jj.eq.1) then ! assume maxevent
+                               maxevent=.true.
+                            else             ! no information..
+                               irc=845
+                               write(*,*)myname,'No return-information available.',irc
+                               return
+                            end if
+                            ! store in output grid
+                            first=.false.
+                            !write(*,*)myname," Store.",maxevent,li,lo
+                            if (maxevent) then ! maximum event
+                               if (v%fd(li).lt.aretper(aretmax(1))) then ! below lowest return_level
+                                  if (i%lfldat(31)) then ! we have zero level
+                                     if (aretper(aretmax(1)).ge.0.0D0.and.v%fd(li).ge.i%zero) then
+                                        right=aretmax(1)
+                                        drf=max(1.0D-10, aretper(right))
+                                        o%fd(lo)=((v%fd(li)-i%zero)/drf) * r%ret(kk)%ptr%parid%fd(right)
+                                        if (v%fd(li).gt.i%zero.and.o%fd(lo).lt.1.0D-10) then
+                                           write(*,*) myname,'Zero:',v%fd(li),i%zero,drf,&
+                                                & " rp:",r%ret(kk)%ptr%parid%fd," ps:",aretper
+                                        end if
+                                     else
+                                        !write(*,*)myname,'Out of range:',aretper(aretmax(1)),&
+                                        !     &li,v%fd(li),lo,associated(o%fd)
+                                        o%fd(lo)=o%filld
+                                     end if
+                                  else
+                                     o%fd(lo)=o%filld
+                                  end if
+                               else if (v%fd(li).gt.aretper(aretmax(newnn))) then ! above
+                                  left=1
+                                  right=newnn
+                                  left=aretmax(left) 
+                                  right=aretmax(right)
+                                  o%fd(lo)=extrapolate(aretper(left),r%ret(kk)%ptr%parid%fd(left),&
+                                       & aretper(right),r%ret(kk)%ptr%parid%fd(right), &
+                                       & v%fd(li))
+                                  ! o%fd(lo)=r%ret(kk)%ptr%parid%fd(aretmax(newnn))
+                               else                ! between
+                                  call sort_heapsearch1r(nretper,aretper,eps,newnn,aretmax,v%fd(li),left,right)
+                                  if (right.eq.0) then
+                                     write(*,*)myname," Heapsearch1r system error:'",v%var250(1:v%lenv)//"'",&
+                                          & v%fd(li),newnn,left,right,eps
+                                     write(*,*)myname," aretper:",aretper
+                                     write(*,*)myname," aretper:",aretmax
+                                     call ncf_printPos(v%f%pos)
+                                     irc=911
+                                     return
+                                  end if
+                                  left=aretmax(left) 
+                                  right=aretmax(right)
+                                  drf=max(1.0D-10, aretper(right)-aretper(left) )
+                                  o%fd(lo)=((v%fd(li)-aretper(left))/drf)&
+                                       & * (r%ret(kk)%ptr%parid%fd(right)-r%ret(kk)%ptr%parid%fd(left)) &
+                                       & + r%ret(kk)%ptr%parid%fd(left)
+                               end if
+                            else                   ! minimum event
+                               if (v%fd(li).lt.aretper(aretmin(1))) then ! below
+                                  left=newnn
+                                  right=1
+                                  left=aretmin(left)
+                                  right=aretmin(right)
+                                  o%fd(lo)=extrapolate(aretper(left),r%ret(kk)%ptr%parid%fd(left),&
+                                       & aretper(right),r%ret(kk)%ptr%parid%fd(right), &
+                                       & v%fd(li))
+                                  ! o%fd(lo)=r%ret(kk)%ptr%parid%fd(aretmin(1))
+                               else if (v%fd(li).gt.aretper(aretmin(newnn))) then ! above highest return_level
+                                  if (i%lfldat(31)) then
+                                     if (aretper(aretmin(newnn)).le.0.0D0.and.v%fd(li).le.i%zero) then
+                                        left=aretmin(newnn)
+                                        drf=min(-1.0D-10, aretper(left))
+                                        o%fd(lo)=((v%fd(li)-i%zero)/drf) * r%ret(kk)%ptr%parid%fd(left)
+                                     else
+                                        o%fd(lo)=o%filld
+                                     end if
+                                  else
+                                     o%fd(lo)=o%filld
+                                  end if
+                               else
+                                  call sort_heapsearch1r(nretper,aretper,eps,newnn,aretmin,v%fd(li),left,right)
+                                  if (right.eq.0) then
+                                     write(*,*)myname," Heapsearch1r system error:'",v%var250(1:v%lenv)//"'",&
+                                          & v%fd(li),newnn,left,right,eps
+                                     write(*,*)myname," aretper:",aretper
+                                     call ncf_printPos(v%f%pos)
+                                     irc=912
+                                     return
+                                  end if
+                                  left=aretmin(left)
+                                  right=aretmin(right)
+                                  drf=max(1.0D-10, aretper(right)-aretper(left) )
+                                  o%fd(lo)=((v%fd(li)-aretper(left))/drf)&
+                                       & * (r%ret(kk)%ptr%parid%fd(right)-r%ret(kk)%ptr%parid%fd(left)) &
+                                       & + r%ret(kk)%ptr%parid%fd(left)
+                               end if
+                            end if
+                            if (o%fd(lo).ne.o%filld) then
+                               if (valid_first) then
+                                  valid_first=.false.
+                                  valid_max=o%fd(lo)
+                                  valid_min=o%fd(lo)
+                               else
+                                  valid_max=max(valid_max,o%fd(lo))
+                                  valid_min=min(valid_min,o%fd(lo))
+                               end if
+                            end if
+                            if (ncf_bdeb) then
+                               write(*,*)'Output:',li,v%fd(li),lo,o%fd(lo),maxevent,left,right
+                            end if
+                            ook(2)=ook(2)+1
+                         else
+                            orm(2)=orm(2)+1
+                         end if
+                      end do LRGRID
+                      ook(1)=ook(1)+1
+                   else
+                      orm(1)=orm(1)+1
+                   end if
+                end do LLGRID
+                if (boz) then             ! make return-level variable
+                   ! make sure positions are the same in input/output...
+                   call ncf_importVariable(out,zi,irc)
+                   if (irc.ne.0) then
+                      write(*,*)myname,&
+                           & ' Error return from ncf_importvariable.',irc
+                      return
+                   end if
+                end if
+                call ncf_importVariable(out,o,irc) ! new variable...
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_importvariable.',irc
+                   return
+                end if
+                !
+                ! set max/min attributes...
+                if (.not.valid_first) then
+                   call ncf_setAttribute(o,"valid_min",valid_min,o%type)
+                   call ncf_setAttribute(o,"valid_max",valid_max,o%type)
+                end if
+                ! clean up
+                call ncf_clearDimOrder(ido)
+                ! add return level variable
+                if (boz) then
+                   nullify(zi)
+                   call ncf_clearDimOrder(zdo)
+                end if
+                if(irc.ne.0)return
+                ! exit LRET
+             end if
+             if (.not. binp) then      ! variable is in out, not inp...
+                call ncf_importVariable(out,v,irc)
+                if (irc.ne.0) then
+                   write(*,*)myname,&
+                        & ' Error return from ncf_importvariable.',irc
+                   return
+                end if
+             end if
+             !     end do LRET
+             if (.not.found) then
+                write(*,*)myname,"Missing variable '"//i%ret250(ivar)(1:i%lenret(ivar))//"'"
+                irc=845
+                return
+             end if
+             if (first) WRITE(*,*) MYNAME," No data for: '"//&
+                  & i%net250(ivar)(1:i%lennet(ivar))//"'"
+          end do LREPER
+          if (allocated(aretper)) deallocate(aretper)
+          if (allocated(aretind)) deallocate(aretind)
+          if (allocated(aretmax)) deallocate(aretmax)
+          if (allocated(aretmin)) deallocate(aretmin)
           call ncf_clearWeight(wgt)
-          call ncf_clearDimOrder(zdo)
-          nullify(zi)
-          !end if ! import variable
-       end do ! nrimp
-    end if
-    !
-    ! make return period variables...
-    !
-    if (r%brp) then
-       lenp=length(i%rp250(r%tnrrp),250,10)
-       write(*,*)myname,' processing: ',i%rp250(r%tnrrp)(1:lenp),r%brp
-       ook(1)=0
-       ook(2)=0
-       orm(1)=0
-       orm(2)=0
-       wgt => ncf_makeWeight4(r%ret%nrdim,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,'Error return from ncf_makeWeight4.',irc
-          return
-       end if
-       !
-       ! make dimorder for retper
-       rdo=>ncf_makeDimOrder(r%ret%parid,irc)
-       nretper=ncf_getDimOrderLength(rdo) ! number of return periods
-       nn=nretper                         ! actual number of return periods
-       increasing=(r%ret%parid%fd(1).le.r%ret%parid%fd(nretper))
-       !we assume that the return periods are sorted...
-       if (allocated(aretper)) deallocate(aretper)
-       if (allocated(aretind)) deallocate(aretind)
-       if (allocated(aretmax)) deallocate(aretmax)
-       if (allocated(aretmin)) deallocate(aretmin)
-       allocate(aretper(nretper),aretind(nretper),aretmax(nretper),&
-            & aretmin(nretper),stat=irc)
-       if(irc.ne.0) then
-          write(*,*)myname,' Unable to allocate ARETPER.',irc
-          return
-       end if
-       ! The return_levels can be for either "minimum events" or "maximum events"
-       ! If the return_level increases with increasing return_period, it is a "maximum event"...
-       do ii=1,nn
-          aretind(ii)=ii ! return_period index
-       end do
-       call sort_heapsort1r(nretper,r%ret%parid%fd,eps,newnn,nn,aretind,uniq)
-       do ii=1,newnn                        ! index to valid return periods
-          aretmax(ii)=aretind(ii)           ! maxevent index
-          aretmin(ii)=aretind(newnn-ii+1)   ! minevent index
-       end do
-       !
-       ! add return-period variable to output file
-       if (i%lfldat(35)) then ! create return-level variable
-          ! check if return-level variable already exists
-          r%bok=.false. ! we dont expect to find this variable (silent)
-          zi => ncf_getVariable(inp,i%rpd250(1:lenr),r%bok,irc)
-          if (r%bok) then
-             write(*,*)myname," Variable exists '"//i%rpd250(1:lenr)//"'"
-          else
-             write(*,*)myname," Interpolating '"//i%rpd250(1:lenr)//"'"
-          end if
-          bozz=(.not.r%bok) ! should we make return-level variable?
-       else
-          bozz=.false.
-       end if
-       if (bozz) then ! make return-level variable
-          !write(*,*)myname," Interpolating '"//i%rpd250(1:lenr)//"'"
-          zi =>ncf_copyVariable(r%ret%parid,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_copyVariable.',irc
-             return
-          end if
-          call ncf_copyVariableField(zi,r%ret%parid,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_copyVariableField.',irc
-             return
-          end if
-          !
-          ! make return-period dimension
-          r%ro=>ncf_createDimension(out,i%rpd250(1:lenr),nretper)
-          r%rz=>ncf_createDimension(inp,i%rpd250(1:lenr),nretper)
-          iz=ncf_getDimEntry(inp,i%rpd250(1:lenr))
-          write(*,*)myname,"Created dimension '"//i%rpd250(1:lenr)//"'",r%rz%ind
-          !
-          call ncf_clearDimOrder(zdo) ! remove all dimensions in zdo
-          ! add return-period dimension (r%rz)
-          zdo=>ncf_newDimOrder(inp,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_newDimOrder.',irc
-             return
-          end if
-          call ncf_addDimOrderEntry(zdo,iz,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
-             return
-          end if
-          call ncf_setVariableDimOrder(zi,zdo,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
-             return
-          end if
-          call ncf_importVariable(out,zi,irc)
-          if (irc.ne.0) then
-             write(*,*)myname,&
-                  & ' Error return from ncf_importvariable.',irc
-             return
-          end if
-          !
-          if(bdeb)write(*,*)myname,"### Prepending E:'"//zi%var250(1:zi%lenv)//"'",zi%lend
-          call ncf_prependVariable(inp,zi)
-          nullify(zi)
-          call ncf_clearDimOrder(zdo)
-          ! at this point the return-level dimension RZ is defined...
+          pst(1)=100.0D0*real(ook(1))/real(max(ook(1)+orm(1),1))
+          pst(2)=100.0D0*real(ook(2))/real(max(ook(2)+orm(2),1))
+          write(*,'(X,A,A,I0,"(",F0.1,"%)")') myname,'Valid interpolation: ',ook(1),pst(1)
+          write(*,'(X,A,A,I0,"(",F0.1,"%)")') myname,'Accepted grid points:',ook(2),pst(2)
        end if
        if (bdeb) then
           call ncf_checkInventory(inp,irc)
@@ -1759,499 +2359,22 @@ contains
              return
           end if
        end if
-       ! loop over output return variables
-       if(bdeb)write(*,*)myname,' Return periods: ',i%nrret
-       LREPER: do ivar=1,i%nrret
-          first=.true.
-          if(bdeb)WRITE(*,*) MYNAME," Creating return-period: '"//i%net250(ivar)(1:i%lennet(ivar))//"'"
-          ! initialise return period...
-          brok=.true.
-          rp => ncf_getVariable(r%ret,i%per250(ivar)(1:i%lenper(ivar)),brok,irc)
-          IF (IRC.NE.0) THEN
-             WRITE(*,*) MYNAME,' Error return from ncf_getVariable.',IRC
-             RETURN
-          END IF
-          if (.not.brok) then
-             irc=345
-             WRITE(*,*) MYNAME," Missing return-level variable '"//i%per250(ivar)(1:i%lenper(ivar))//"'"
-             RETURN
-          end if
-          if (.not.rp%readyfield) then ! read data into memory if not already there
-             call ncf_readRealData(rp,brok,irc)
-             if (.not.brok) irc=999
-             if (irc.ne.0) then
-                write(*,*)myname,' Error return from ncf_readRealData L.',irc,v%lend
-                return
-             end if
-          end if
-          call ncf_clearDimOrder(xydo)
-          if (brok) then
-             ! x,y dimensions
-             xydo => ncf_getPrimaryDimOrder(r%ret,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,' Error return from ncf_getPrimaryDimensions L.',irc
-                return
-             end if
-             rx=>ncf_getDimensionOrderDimension(xydo,1)
-             ry=>ncf_getDimensionOrderDimension(xydo,2)
-             if (bdeb) then
-                write(*,*)myname,'Return period xy-dimorder:'
-                call ncf_printDimOrder(xydo)
-             end if
-             if (bdeb) then
-                call ncf_printDimension(r%ret,rx)
-                call ncf_printDimension(r%ret,ry)
-             end if
-          else
-             irc=345
-             WRITE(*,*) MYNAME," Unable to read variable: '"//i%per250(ivar)(1:i%lenper(ivar))//"'"
-             RETURN
-          end if
-          !
-          found=.false.
-          v => ncf_getVariable(inp,i%ret250(ivar)(1:i%lenret(ivar)),binp,irc)
-          if (irc.ne.0) then
-             binp=.false.
-          end if
-          if (.not.binp) then
-             v => ncf_getVariable(out,i%ret250(ivar)(1:i%lenret(ivar)),r%bok,irc)
-             ! make sure positions are the same...
-             call ncf_importVariable(inp,v,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_importvariable.',irc
-                return
-             end if
-             if (.not.r%bok) irc=701
-             if (irc.ne.0) then
-                write(*,*)myname,' Error return from ncf_getVariable...',&
-                     & irc,i%ret250(ivar)(1:i%lenret(ivar))
-                return
-             end if
-          else
-             r%bok=.true.
-          end if
-          if (associated(v)) then
-             !n => inp%firstVariable%next
-             !LRET: do while (.not.associated(n,target=inp%lastVariable))
-             !   v => n
-             !   n => n%next
-             !   if (.not.i%ret250(ivar)(1:i%lenret(ivar)).eq.v%var250(1:v%lenv)) cycle LRET ! not target variable
-             !   if (.not.ncf_variableContainsDim(v,itime)) cycle LRET ! no time dimension
-             !
-             found=.true.
-             if(bdeb)write(*,*) myname,' Return-variable: ',v%var250(1:v%lenv),v%lend
-             if (.not.v%readyfield) then ! read data into memory if not already there
-                brok=.true. ! always true...
-                call ncf_readRealData(v,brok,irc)
-                if (.not.brok) irc=999
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_readRealData M.',irc,v%lend
-                   return
-                end if
-             end if
-             !
-             call ncf_clearDimOrder(ido)
-             ido=>ncf_makeDimOrder(v,irc)
-             call ncf_setInventoryDimOrder(inp,ido,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,'Error return from setInventoryDimOrder.',irc
-                return
-             end if
-             ! remove coordinate dimensions from variable dim-order
-             call ncf_removeDimOrder(ido,r%ixydo)
-             !
-             ! get any old variable that has the same name as output variable...
-             !
-             r%bok=.false. ! we dont expect to find this variable (silent)
-             !
-             ! create differentiated output variable
-             !
-             o => ncf_getVariable(out,i%net250(ivar)(1:i%lennet(ivar)),r%bok,irc)
-             if (.not.r%bok) then
-                o => ncf_copyVariable(v,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_copyVariable.',irc
-                   return
-                end if
-                ! set correct unit
-                !write(*,*)myname," Setting unit '"//unit250(1:lenu)//"'"
-                call ncf_setTextAttribute(o,"units",unit250(1:lenu))
-                ! set variable name
-                call ncf_setVariableName(o,i%net250(ivar))
-                call ncf_setTextAttribute(o,"standard_name",i%net250(ivar)(1:i%lennet(ivar)))
-                if(bdeb)write(*,*)myname,"### Prepending F:'"//o%var250(1:o%lenv)//"'",o%lend
-                call ncf_prependVariable(out,o)
-             end if
-             ! initialise field to "undefined"
-             call ncf_initField(o,o%filld,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_initField.',irc
-                return
-             end if
-             ! make sure positions are the same...
-             call ncf_importVariable(inp,o,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_importvariable.',irc
-                return
-             end if
-             !
-             ! create return-level variable
-             !
-             if (bozz) then ! create return-level variable
-                ! check if return-level variable already exists
-                r%bok=.false. ! we dont expect to find this variable (silent)
-                zi => ncf_getVariable(out,i%per250(ivar)(1:i%lenper(ivar)),r%bok,irc)
-                boz=(.not.r%bok) ! should we make return-level variable?
-             else
-                boz=.false.
-             end if
-             if (boz) then ! make return-level variable
-                if(bdeb)write(*,*)myname," Interpolating '"//i%per250(ivar)(1:i%lenper(ivar))//"'"
-                zi =>ncf_copyVariable(rp,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_copyVariable.',irc
-                   return
-                end if
-                call ncf_copyVariableAttribute(zi,v,"grid_mapping",irc)
-                call ncf_copyVariableAttribute(zi,v,"coordinates",irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_copyVariableAttribute.',irc
-                   return
-                end if
-                !
-                call ncf_clearDimOrder(zdo)
-                zdo=>ncf_copyDimOrder(r%ixydo,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_copyOrderDim.',irc
-                   return
-                end if
-                ! add return-period dimension (r%rz)
-                call ncf_addDimOrderEntry(zdo,iz,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
-                   return
-                end if
-                call ncf_setVariableDimOrder(zi,zdo,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,' Error return from ncf_DimOrderDim.',irc
-                   return
-                end if
-                if(bdeb)write(*,*)myname,"### Prepending G:'"//&
-                     & zi%var250(1:zi%lenv)//"'",zi%lend
-                call ncf_prependVariable(out,zi)
-                ! initialise field to "undefined"
-                call ncf_initField(zi,zi%filld,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,&
-                        & ' Error return from ncf_initField.',irc
-                   return
-                end if
-                ! call ncf_printVariable(zi)
-                ! make sure we use inp-positions
-                call ncf_importVariable(inp,zi,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,&
-                        & ' Error return from ncf_importvariable.',irc
-                   return
-                end if
-             end if
-             !
-             valid_first=.true.
-             valid_max=o%filld
-             valid_min=o%filld
-             !write(*,*)myname,'Ret pos: '
-             if (bdeb) then
-                call ncf_firstDimension(r%ret,rx)
-                call ncf_firstDimension(r%ret,ry)
-                call ncf_printPos(r%ret%pos)
-                ! print corners...
-                li = ncf_getLocation(r%ret%lonid)
-                lon=r%ret%lonid%fd(li)
-                li = ncf_getLocation(r%ret%latid)
-                lat=r%ret%latid%fd(li)
-                write(*,*)myname,'Corner (1,1):',lon,lat
-                call ncf_lastDimension(r%ret,rx)
-                call ncf_lastDimension(r%ret,ry)
-                call ncf_printPos(r%ret%pos)
-                ! print corners...
-                li = ncf_getLocation(r%ret%lonid)
-                lon=r%ret%lonid%fd(li)
-                li = ncf_getLocation(r%ret%latid)
-                lat=r%ret%latid%fd(li)
-                write(*,*)myname,'Corner (+,+):',lon,lat
-                call ncf_printDimOrder(r%ixydo)
-                ! loop over coordinates dimension-order
-                call ncf_firstDimension(r%ret,rx)
-                call ncf_firstDimension(r%ret,ry)
-             end if
-             call ncf_resetPos(r%ixydo,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,'Error return from ncf_resetPos.',irc
-                return
-             end if
-             LLGRID: do while (ncf_increment(inp,r%ixydo,irc))
-                call ncf_resetPos(ido,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,'Error return from ncf_resetPos.',irc
-                   return
-                end if
-                ! interpolate positions...
-                dbg=dbg+1
-                biok=.true.
-                !write(*,*)myname," Interpolating."
-                !dbt=949*381+481
-                ncf_bdeb=.false. ! (dbg.eq.dbt)
-                call ncf_interpolate2D(inp,r%ret,rx,ry,wgt,biok,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,'Error return from interpolate2d.',irc
-                   return
-                end if
-                if (ncf_bdeb) then
-                   write(*,*)myname," ========Input pos."
-                   call ncf_printPos(inp%pos)
-                   write(*,*)myname," ========Ret pos."
-                   call ncf_printPos(r%ret%pos)
-                   write(*,*)myname," ========Get Retper.",biok
-                   !if (dbg.eq.dbt) return
-                end if
-
-                call ncf_resetPos(rdo,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,'Error return from ncf_resetPos.',irc
-                   return
-                end if
-                if (biok) then
-                   jj=0
-                   LRETPER: do while (ncf_increment(r%ret,rdo,irc))
-                      jj=jj+1
-                      !call ncf_printPos(rp%f%pos)
-                      !call ncf_printWeight(wgt)
-                      aretper(jj)=ncf_valueWeighted(rp,wgt,irc)
-                      if (aretper(jj).eq.rp%filld) then
-                         biok=.false. ! undefined return_levels detected
-                         exit LRETPER
-                      end if
-                      if (boz) then! set return-period variable
-                         call ncf_setDimensionValue(inp,r%rz,jj)       ! forecast time in input-file
-                         lz = ncf_getLocation(zi) ! location in input array
-                         zi%fd(lz)=aretper(jj)
-                         if (ncf_bdeb) then
-                            write(*,*)'Retper:',jj,lz,zi%fd(lz)
-                         end if
-                      end if
-                   end do LRETPER
-                end if
-                !write(*,*)myname," Sub loop.",biok
-                if (biok) then
-                   ! loop over other dimensions...
-                   LRGRID: do while (ncf_increment(inp,ido,irc))
-                      if (bdeb)then
-                         write(*,*)myname,'Grid loop...',biok
-                         call ncf_printPos(inp%pos)
-                         call ncf_printDimOrder(ido)
-                      end if
-                      !
-                      ! loop over return-period dimension
-                      !
-                      left=-1
-                      right=-1
-                      li = ncf_getLocation(v)
-                      lo = ncf_getLocation(o)
-                      biok=(v%fd(li).ne.v%filld)
-                      if (biok) then
-                         if (jj.ne.nretper) then
-                            irc=956
-                            write(*,*)myname,'Invalid NRETPER:',jj,nretper
-                            return
-                         end if
-                         if (jj.gt.1) then
-                            maxevent=(aretper(1).le.aretper(nretper))
-                         else if (jj.eq.1) then ! assume maxevent
-                            maxevent=.true.
-                         else ! no information..
-                            irc=845
-                            write(*,*)myname,'No return-information available.',irc
-                            return
-                         end if
-                         ! store in output grid
-                         first=.false.
-                         !write(*,*)myname," Store.",maxevent,li,lo
-                         if (maxevent) then        ! maximum event
-                            if (v%fd(li).lt.aretper(aretmax(1))) then          ! below lowest return_level
-                               if (i%lfldat(31)) then ! we have zero level
-                                  if (aretper(aretmax(1)).ge.0.0D0.and.v%fd(li).ge.i%zero) then
-                                     right=aretmax(1)
-                                     drf=max(1.0D-10, aretper(right))
-                                     o%fd(lo)=((v%fd(li)-i%zero)/drf) * r%ret%parid%fd(right)
-                                     if (v%fd(li).gt.i%zero.and.o%fd(lo).lt.1.0D-10) then
-                                        write(*,*) myname,'Zero:',v%fd(li),i%zero,drf," rp:",r%ret%parid%fd," ps:",aretper
-                                     end if
-                                  else
-                                     !write(*,*)myname,'Out of range:',aretper(aretmax(1)),&
-                                     !     &li,v%fd(li),lo,associated(o%fd)
-                                     o%fd(lo)=o%filld
-                                  end if
-                               else
-                                  o%fd(lo)=o%filld
-                               end if
-                            else if (v%fd(li).gt.aretper(aretmax(newnn))) then ! above
-                               left=1
-                               right=newnn
-                               left=aretmax(left) 
-                               right=aretmax(right)
-                               o%fd(lo)=extrapolate(aretper(left),r%ret%parid%fd(left),&
-                                    & aretper(right),r%ret%parid%fd(right), &
-                                    & v%fd(li))
-                               ! o%fd(lo)=r%ret%parid%fd(aretmax(newnn))
-                            else                                               ! between
-                               call sort_heapsearch1r(nretper,aretper,eps,newnn,aretmax,v%fd(li),left,right)
-                               if (right.eq.0) then
-                                  write(*,*)myname," Heapsearch1r system error:'",v%var250(1:v%lenv)//"'",&
-                                       & v%fd(li),newnn,left,right,eps
-                                  write(*,*)myname," aretper:",aretper
-                                  write(*,*)myname," aretper:",aretmax
-                                  call ncf_printPos(v%f%pos)
-                                  irc=911
-                                  return
-                               end if
-                               left=aretmax(left) 
-                               right=aretmax(right)
-                               drf=max(1.0D-10, aretper(right)-aretper(left) )
-                               o%fd(lo)=((v%fd(li)-aretper(left))/drf)&
-                                    & * (r%ret%parid%fd(right)-r%ret%parid%fd(left)) &
-                                    & + r%ret%parid%fd(left)
-                            end if
-                         else                        ! minimum event
-                            if (v%fd(li).lt.aretper(aretmin(1))) then ! below
-                               left=newnn
-                               right=1
-                               left=aretmin(left)
-                               right=aretmin(right)
-                               o%fd(lo)=extrapolate(aretper(left),r%ret%parid%fd(left),&
-                                    & aretper(right),r%ret%parid%fd(right), &
-                                    & v%fd(li))
-                               ! o%fd(lo)=r%ret%parid%fd(aretmin(1))
-                            else if (v%fd(li).gt.aretper(aretmin(newnn))) then ! above highest return_level
-                               if (i%lfldat(31)) then
-                                  if (aretper(aretmin(newnn)).le.0.0D0.and.v%fd(li).le.i%zero) then
-                                     left=aretmin(newnn)
-                                     drf=min(-1.0D-10, aretper(left))
-                                     o%fd(lo)=((v%fd(li)-i%zero)/drf) * r%ret%parid%fd(left)
-                                  else
-                                     o%fd(lo)=o%filld
-                                  end if
-                               else
-                                  o%fd(lo)=o%filld
-                               end if
-                            else
-                               call sort_heapsearch1r(nretper,aretper,eps,newnn,aretmin,v%fd(li),left,right)
-                               if (right.eq.0) then
-                                  write(*,*)myname," Heapsearch1r system error:'",v%var250(1:v%lenv)//"'",&
-                                       & v%fd(li),newnn,left,right,eps
-                                  write(*,*)myname," aretper:",aretper
-                                  call ncf_printPos(v%f%pos)
-                                  irc=912
-                                  return
-                               end if
-                               left=aretmin(left)
-                               right=aretmin(right)
-                               drf=max(1.0D-10, aretper(right)-aretper(left) )
-                               o%fd(lo)=((v%fd(li)-aretper(left))/drf)&
-                                    & * (r%ret%parid%fd(right)-r%ret%parid%fd(left)) &
-                                    & + r%ret%parid%fd(left)
-                            end if
-                         end if
-                         if (o%fd(lo).ne.o%filld) then
-                            if (valid_first) then
-                               valid_first=.false.
-                               valid_max=o%fd(lo)
-                               valid_min=o%fd(lo)
-                            else
-                               valid_max=max(valid_max,o%fd(lo))
-                               valid_min=min(valid_min,o%fd(lo))
-                            end if
-                         end if
-                         if (ncf_bdeb) then
-                            write(*,*)'Output:',li,v%fd(li),lo,o%fd(lo),maxevent,left,right
-                         end if
-                         ook(2)=ook(2)+1
-                      else
-                         orm(2)=orm(2)+1
-                      end if
-                   end do LRGRID
-                   ook(1)=ook(1)+1
-                else
-                   orm(1)=orm(1)+1
-                end if
-             end do LLGRID
-             if (boz) then ! make return-level variable
-                ! make sure positions are the same in input/output...
-                call ncf_importVariable(out,zi,irc)
-                if (irc.ne.0) then
-                   write(*,*)myname,&
-                        & ' Error return from ncf_importvariable.',irc
-                   return
-                end if
-             end if
-             call ncf_importVariable(out,o,irc) ! new variable...
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_importvariable.',irc
-                return
-             end if
-             !
-             ! set max/min attributes...
-             if (.not.valid_first) then
-                call ncf_setAttribute(o,"valid_min",valid_min,o%type)
-                call ncf_setAttribute(o,"valid_max",valid_max,o%type)
-             end if
-             ! clean up
-             call ncf_clearDimOrder(ido)
-             ! add return level variable
-             if (boz) then
-                nullify(zi)
-                call ncf_clearDimOrder(zdo)
-             end if
-             if(irc.ne.0)return
-             ! exit LRET
-          end if
-          if (.not. binp) then ! variable is in out, not inp...
-             call ncf_importVariable(out,v,irc)
-             if (irc.ne.0) then
-                write(*,*)myname,&
-                     & ' Error return from ncf_importvariable.',irc
-                return
-             end if
-          end if
-          !end do LRET
-          if (.not.found) then
-             write(*,*)myname,"Missing variable '"//i%ret250(ivar)(1:i%lenret(ivar))//"'"
-             irc=845
-             return
-          end if
-          if (first)WRITE(*,*) MYNAME," No data for: '"//i%net250(ivar)(1:i%lennet(ivar))//"'"
-       end do LREPER
-       if (allocated(aretper)) deallocate(aretper)
-       if (allocated(aretind)) deallocate(aretind)
-       if (allocated(aretmax)) deallocate(aretmax)
-       if (allocated(aretmin)) deallocate(aretmin)
-       call ncf_clearWeight(wgt)
-       pst(1)=100.0D0*real(ook(1))/real(max(ook(1)+orm(1),1))
-       pst(2)=100.0D0*real(ook(2))/real(max(ook(2)+orm(2),1))
-       write(*,'(X,A,A,I0,"(",F0.1,"%)")') myname,'Valid interpolation: ',ook(1),pst(1)
-       write(*,'(X,A,A,I0,"(",F0.1,"%)")') myname,'Accepted grid points:',ook(2),pst(2)
-    end if
-    if (bdeb) then
-       call ncf_checkInventory(inp,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_checkInventory B.',irc
-          return
-       end if
-    end if
-    write(*,*)myname,' Closing: ',i%rp250(r%tnrrp)(1:lenp)
+    end do
+    ! do ii=1,i%nrimp
+    !    leni=length(i%imp250(ii),250,10)
+    !    if (i%limp(ii).eq.0) then
+    !       write(*,*)myname,"Import:",i%imp250(ii)(1:leni)," no label..."
+    !    else if (i%limp(ii).gt.0) then
+    !       lenl=length(i%lbl100(abs(i%limp(ii))),100,10)
+    !       write(*,*)myname,"Import:",i%imp250(ii)(1:leni)," did not find: ",&
+    !            & i%limp(ii),i%lbl100(abs(i%limp(ii)))(1:lenl)
+    !    else if (i%limp(ii).lt.0) then
+    !       lenl=length(i%lbl100(abs(i%limp(ii))),100,10)
+    !       write(*,*)myname,"Import:",i%imp250(ii)(1:leni)," processed: ",&
+    !            & i%limp(ii),i%lbl100(abs(i%limp(ii)))(1:lenl)
+    !    end if
+    ! end do
+    write(*,*)myname,' Closing: ',i%rp250(r%tnrrp(kk))(1:lenp)
   end subroutine addReturnPeriod
   !
   ! extrapolate return period
@@ -2610,23 +2733,25 @@ contains
     type(inventory), pointer :: aux
     type(init) :: i
     type(run) :: r
-    integer :: irc
-    if (r%brp) then
-       if(bdeb)write(*,*)myname,'Cleaning up...',irc
-       ! close return-period file
-       call ncf_closeFile(r%ret,irc)
-       if (irc.ne.0) then
-          write(*,*)myname,' Error return from ncf_closeFile.',irc
-          return
+    integer :: kk,irc
+    do kk=1,i%nrlbl
+       if (r%brp(kk)) then
+          if(bdeb)write(*,*)myname,'Cleaning up...',irc
+          ! close return-period file
+          call ncf_closeFile(r%ret(kk)%ptr,irc)
+          if (irc.ne.0) then
+             write(*,*)myname,' Error return from ncf_closeFile.',irc
+             return
+          end if
+          !
+          call ncf_clearInventory(r%ret(kk)%ptr,irc) ! delete internally stored data...
+          if (irc.ne.0) then
+             write(*,*) myname,"Error return from ncf_clearInventory.",irc
+             return
+          end if
+          if (associated(r%ret(kk)%ptr)) deallocate(r%ret(kk)%ptr)
        end if
-       !
-       call ncf_clearInventory(r%ret,irc) ! delete internally stored data...
-       if (irc.ne.0) then
-          write(*,*) myname,"Error return from ncf_clearInventory.",irc
-          return
-       end if
-       if (associated(r%ret)) deallocate(r%ret)
-    end if
+    end do
     !
     if (.not. r%initWrite) then
        call ncf_closeNcFile(out,irc)
@@ -2832,9 +2957,9 @@ contains
              return
           end if
           call ncf_addAttribute(o,"Averaged_over_dim",dim250(1:lend))
-          if(bdeb)write(*,*)myname,"### Prepending H:'"//&
+          if(bdeb)write(*,*)myname,"### Adding H:'"//&
                & o%var250(1:o%lenv)//"'",o%lend
-          call ncf_prependVariable(out,o)
+          call ncf_appendVariable(out,o)
        end if
        ! make sure positions are the same...
        call ncf_importVariable(inp,o,irc)
@@ -3031,7 +3156,7 @@ contains
              do ii=1,pstvar%lend
                 pstvar%fd(ii)=name(ii)
              end do
-             if(bdeb)write(*,*)myname,"### Prepending I:'"//&
+             if(bdeb)write(*,*)myname,"### Adding I:'"//&
                   & pstvar%var250(1:pstvar%lenv)//"'",pstvar%lend
              call ncf_prependVariable(out,pstvar)
           end if
@@ -3085,9 +3210,9 @@ contains
           end if
           lend=length(dim250,250,10)
           call ncf_addAttribute(o,"Percentile_dim",dim250(1:lend))
-          if(bdeb)write(*,*)myname,"### Prepending J:'"//&
+          if(bdeb)write(*,*)myname,"### Adding J:'"//&
                & o%var250(1:o%lenv)//"'",o%lend
-          call ncf_prependVariable(out,o)
+          call ncf_appendVariable(out,o)
        end if
        ! make sure positions are the same...
        call ncf_importVariable(inp,o,irc)
