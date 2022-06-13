@@ -1,5 +1,3 @@
-# ncreper
-
 Welcome to the `ncreper` wiki!
 
 ## Running `ncreper.bin`
@@ -14,11 +12,11 @@ The `ncreper.bin` program is in the `nctools` module which can be loaded on the 
 The binary reads input from stdin. For instance:
 
       cd ncreper/work
-      ncreper.bin < vindkast_meps_stasjoner.xml
+      ncreper.bin < ncreper.in
 
 
 ## Program input
-The input format is based on headers and data, and may look like this:
+The input format is based on headers, data and commands, and may look like this:
 
       # ?
       # exit
@@ -109,9 +107,25 @@ The input format is based on headers and data, and may look like this:
           wind_speed_of_gust  wind_speed_of_gust_mb0
           wind_speed_of_gust_return_period wind_speed_of_gust_return_period_mb0
 
-Comments are preceded by `#`. The square brackets indicate how many lines the data body should consist off.
+Comment-lines are preceded by `#`. The square brackets indicate how many lines the data body should consist off, the trailing `&` indicates that the header is mandatory, and the `VFLRM` indicates the data preprocessor options.
 
 This program is very memory intensive. If you run out of memory, the program will stop, typically when reading a variable. In this case you have to request more memory from the `PPI`, or you have to slice the data more (`NUMBER OF DATA SLICES [1]VFL`).
+
+You may import environment variables using the `import` command, for instance
+
+      import file
+
+and later use the variable in the data body, for instance
+
+      #
+       INPUT FILE (NETCDF) [1]VFLR &
+         data/$file
+      #
+       OUTPUT FILE (NETCDF) [1]
+         output/nora3_$file
+      #
+
+Note that variable substitution is on available for headers with the `V` option enabled.
 
 # Local installation
 
