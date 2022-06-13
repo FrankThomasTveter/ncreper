@@ -1,3 +1,14 @@
+*~
+*.nc
+*.tar
+simplified/
+jnk/
+jnk
+log*
+*old
+*debug
+xml/
+
 # Prerequisites
 *.d
 
@@ -30,3 +41,4 @@
 *.exe
 *.out
 *.app
+*.bin
